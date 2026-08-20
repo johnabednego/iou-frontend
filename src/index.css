@@ -42,3 +42,12 @@ h1 {
 /* scrollbar for desktop */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: rgba(74,144,255,0.3); border-radius: 10px; }
+
+/* Datepicker portal - renders calendar above all Cards (which use backdrop-blur creating stacking contexts) */
+#datepicker-portal {
+  position: relative;
+  z-index: 9999;
+}
+#datepicker-portal .react-datepicker-popper {
+  z-index: 9999 !important;
+}

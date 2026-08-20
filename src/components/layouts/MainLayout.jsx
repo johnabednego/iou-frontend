@@ -46,7 +46,9 @@ export default function MainLayout() {
   const closeSidebar = () => setSidebarOpen(false);
 
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
-  const canSeeApprovals = isCashierOrAdmin || user?.is_approver || user?.role === 'hod';
+  const isApprover = user?.is_approver === true;
+  const canSeeApprovals = isCashierOrAdmin || isApprover || user?.role === 'hod';
+  const canSeeRedeemed = isCashierOrAdmin || isApprover;
 
   const sidebarContent = (
     <>
@@ -63,11 +65,12 @@ export default function MainLayout() {
         <NavItem to="/ious" label="My Requests" isActive={isActivePath('/ious')} onClick={closeSidebar} />
         <NavItem to="/ious/create" label="Request IOU" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
         <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
-        <NavItem to="/redeemed" label="IFS Vouchers" show={isCashierOrAdmin} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
+        <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
         {/* admin & cashier links */}
         <NavItem to="/admin/approvers" label="Approvers" show={user?.is_admin} isActive={isActivePath('/admin/approvers')} onClick={closeSidebar} />
         <NavItem to="/admin/users" label="Users" show={user?.is_admin} isActive={isActivePath('/admin/users')} onClick={closeSidebar} />
         <NavItem to="/admin/audit-logs" label="Audit Logs" show={user?.is_admin} isActive={isActivePath('/admin/audit-logs')} onClick={closeSidebar} />
+        <NavItem to="/admin/settings" label="Settings" show={user?.is_admin} isActive={isActivePath('/admin/settings')} onClick={closeSidebar} />
       </nav>
 
       <div className="mt-8 text-sm text-white/80">

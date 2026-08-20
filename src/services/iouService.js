@@ -57,3 +57,24 @@ export const getAuditLogs = (params) => api.get('/audit-logs', { params });
 export const cashierRejectIOU = (id, data) => api.post(`/ious/${id}/cashier-reject`, data);
 export const cashierReturnIOU = (id, data) => api.post(`/ious/${id}/cashier-return`, data);
 
+// Settings
+export const getDateLimit = () => api.get('/settings/date-limit');
+export const setDateLimit = (min_date) => api.put('/settings/date-limit', { min_date });
+
+// Export (returns download URL string for use with window.open or anchor)
+export const getExportUrl = (params = {}) => {
+  const baseUrl = api.defaults.baseURL || '';
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.start_date) qs.set('start_date', params.start_date);
+  if (params.end_date) qs.set('end_date', params.end_date);
+  const queryStr = qs.toString();
+  return `${baseUrl}/ious/export${queryStr ? '?' + queryStr : ''}`;
+};
+
+// Export via fetch (for proper auth cookie handling)
+export const exportIOUs = (params = {}) => api.get('/ious/export', {
+  params,
+  responseType: 'blob'
+});
+

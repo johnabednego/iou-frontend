@@ -2,8 +2,11 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { exportIOUs, getDateLimit } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { AuthContext } from '../contexts/AuthContext';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 /* Sparkline */
 function Sparkline({ data = [], width = 120, height = 28, stroke = '#065f46' }) {
@@ -59,10 +62,19 @@ function formatCurrency(n, currency = 'GHS') {
   return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
 }
 
+const CURRENCY_SYMBOLS = { GHS: 'GH₵', USD: '$', EUR: '€', GBP: '£' };
+const CURRENCY_COLORS = { GHS: '#065f46', USD: '#1d4ed8', EUR: '#7c3aed', GBP: '#be185d' };
+
 function shortDate(dt) {
   if (!dt) return '-';
   const d = new Date(dt);
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDateLabel(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 function StatusBadge({ status }) {
@@ -103,11 +115,49 @@ export default function Dashboard() {
   const [query, setQuery] = useState(''); // debounced query sent to backend
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [viewModeAll, setViewModeAll] = useState(false); // admin toggle
+  const [viewModeAll, setViewModeAll] = useState(false); // admin/approver toggle
   const [showApprovedByMe, setShowApprovedByMe] = useState(false);
+
+  // Admin-controlled date limit
+  const [minDateLimit, setMinDateLimit] = useState(null); // Date object or null
+  const todayDate = new Date();
+  todayDate.setHours(23, 59, 59, 999);
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
 
   const debounceRef = useRef(null);
   const reloadIntervalRef = useRef(null);
+
+  // Determine user role capabilities
+  const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
+  const isApprover = user?.is_approver === true;
+  const canSeeAll = isCashierOrAdmin || isApprover;
+  const canExport = isCashierOrAdmin || isApprover;
+
+  // Set viewModeAll default for cashiers/admins/approvers
+  useEffect(() => {
+    if (canSeeAll) {
+      setViewModeAll(true);
+    }
+  }, [canSeeAll]);
+
+  // Fetch admin date limit on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getDateLimit();
+        if (res.data?.min_date) {
+          setMinDateLimit(new Date(res.data.min_date));
+        }
+      } catch (_) {
+        // Default: first day of current month
+        const now = new Date();
+        setMinDateLimit(new Date(now.getFullYear(), now.getMonth(), 1));
+      }
+    })();
+  }, []);
 
   // Local immediate filter for UX - compute filteredIous using searchLocal (client-side)
   const filteredIousLocal = useMemo(() => {
@@ -162,7 +212,7 @@ export default function Dashboard() {
           search: query || undefined
         };
 
-        if (user?.is_admin && viewModeAll) params.all = true;
+        if (canSeeAll && viewModeAll) params.all = true;
         if (showApprovedByMe) params.approved_by = user?.id;
 
         const [rIous, rApps, rNotes] = await Promise.all([
@@ -196,7 +246,10 @@ export default function Dashboard() {
       if (reloadIntervalRef.current) clearInterval(reloadIntervalRef.current);
     };
     // include only the meaningful deps (query is debounced)
-  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe]);
+  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll]);
+
+  // Determine if filters are applied
+  const filtersApplied = !!(startDate || endDate || statusFilter || searchLocal.trim() || showApprovedByMe);
 
   // KPIs computed off the current (server) ious
   const kpis = useMemo(() => {
@@ -206,7 +259,8 @@ export default function Dashboard() {
 
     let pendingCount = 0;
     let approvedThisMonth = 0;
-    let approvedAmount = 0;
+    // Multi-currency approved amounts
+    const approvedAmountByCurrency = {};
     let disbursedCount = 0;
     let awaitingDisbursement = 0;
     let expenseSubmittedCount = 0;
@@ -223,16 +277,22 @@ export default function Dashboard() {
         const created = i.updated_at || i.created_at;
         if (created) {
           const d = new Date(created);
-          if (d.getMonth() === month && d.getFullYear() === year) disbursedCount++;
+          if (filtersApplied || (d.getMonth() === month && d.getFullYear() === year)) disbursedCount++;
         }
       }
       if (['APPROVED', 'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'DISBURSEMENT_CONFIRMED', 'EXPENSE_PENDING_APPROVAL', 'EXPENSE_SUBMITTED', 'EXPENSE_RETURNED', 'RECONCILED', 'REDEEMED'].includes(i.status)) {
         const created = i.updated_at || i.created_at || i.submitted_at;
         if (created) {
           const d = new Date(created);
-          if (d.getMonth() === month && d.getFullYear() === year) {
+          // When filters are applied, count all IOUs from server (already filtered)
+          // When no filters, only count current month
+          const shouldCount = filtersApplied || (d.getMonth() === month && d.getFullYear() === year);
+          if (shouldCount) {
             approvedThisMonth++;
-            if (i.estimated_amount) approvedAmount += Number(i.estimated_amount) || 0;
+            if (i.estimated_amount) {
+              const cur = i.currency || 'GHS';
+              approvedAmountByCurrency[cur] = (approvedAmountByCurrency[cur] || 0) + (Number(i.estimated_amount) || 0);
+            }
           }
           const diff = Math.floor((today0 - (new Date(created)).setHours(0, 0, 0, 0)) / dayMs);
           if (diff >= 0 && diff < 7) {
@@ -242,15 +302,94 @@ export default function Dashboard() {
       }
     }
 
-    return { pendingCount, approvedThisMonth, approvedAmount, disbursedCount, awaitingDisbursement, expenseSubmittedCount, sparkData: perDay };
-  }, [ious]);
+    return { pendingCount, approvedThisMonth, approvedAmountByCurrency, disbursedCount, awaitingDisbursement, expenseSubmittedCount, sparkData: perDay };
+  }, [ious, filtersApplied]);
+
+  // Total count of IOUs (reflects current filters)
+  const totalCount = filteredIousLocal.length;
+
+  // Dynamic KPI labels
+  const approvedLabel = useMemo(() => {
+    if (startDate && endDate) return `Value of approved IOUs (${formatDateLabel(startDate)} – ${formatDateLabel(endDate)})`;
+    if (startDate) return `Value of approved IOUs (from ${formatDateLabel(startDate)})`;
+    if (endDate) return `Value of approved IOUs (up to ${formatDateLabel(endDate)})`;
+    return 'Value of approved IOUs this month';
+  }, [startDate, endDate]);
+
+  const countLabel = useMemo(() => {
+    if (filtersApplied) return 'Matching current filters';
+    if (canSeeAll && viewModeAll) return 'All IOUs across the company';
+    return 'All your IOUs';
+  }, [filtersApplied, canSeeAll, viewModeAll]);
+
+  // Export handler
+  async function handleExport() {
+    setExportMsg('');
+    // Inform user that only redeemed IOUs are exported
+    if (statusFilter && statusFilter !== 'REDEEMED') {
+      setExportMsg('ℹ️ Only redeemed (completed) IOUs can be exported. Your status filter will be overridden to "Redeemed".');
+    }
+    setExporting(true);
+    try {
+      const params = {};
+      if (searchLocal.trim()) params.search = searchLocal.trim();
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
+      // Status is always forced to REDEEMED on the backend
+
+      const res = await exportIOUs(params);
+      // Create download link from blob
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      a.download = `redeemed_ious_${timestamp}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setExportMsg('✅ Export downloaded successfully.');
+    } catch (err) {
+      console.error('Export error', err);
+      const msg = err?.response?.data?.message || 'Export failed. Please try again.';
+      // If response is blob, try to read it
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          setExportMsg(`❌ ${json.message || 'Export failed.'}`);
+        } catch (_) {
+          setExportMsg(`❌ ${msg}`);
+        }
+      } else {
+        setExportMsg(`❌ ${msg}`);
+      }
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Date picker helpers
+  const startDateObj = startDate ? new Date(startDate) : null;
+  const endDateObj = endDate ? new Date(endDate) : null;
+
+  function handleStartDateChange(date) {
+    setStartDate(date ? date.toISOString().slice(0, 10) : '');
+  }
+  function handleEndDateChange(date) {
+    setEndDate(date ? date.toISOString().slice(0, 10) : '');
+  }
+
+  // Currency entries for the approved amount card
+  const currencyEntries = Object.entries(kpis.approvedAmountByCurrency || {}).filter(([_, v]) => v > 0);
 
   // while loading show skeleton but don't disrupt searchLocal focus
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[0, 1, 2].map(i => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[0, 1, 2, 3].map(i => (
             <div key={i} className="h-28 bg-white/80 rounded-xl p-6 animate-pulse" />
           ))}
         </div>
@@ -266,8 +405,25 @@ export default function Dashboard() {
     <div className="space-y-6">
       {error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded">{error}</div>}
 
-      {/* KPIs responsive */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* KPIs responsive - 4 columns */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total IOUs Count */}
+        <Card>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm text-slate-400">Total IOUs</div>
+              <div className="text-3xl font-bold text-slate-800">{totalCount}</div>
+              <div className="text-xs text-slate-500 mt-1">{countLabel}</div>
+            </div>
+            <div className="p-2 rounded-full bg-slate-100">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-slate-500">
+                <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </div>
+        </Card>
+
+        {/* Pending IOUs */}
         <Card>
           <div className="flex items-center justify-between">
             <div>
@@ -282,12 +438,17 @@ export default function Dashboard() {
           </div>
         </Card>
 
+        {/* Approved (this month / filtered period) */}
         <Card>
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-sm text-slate-400">Approved (this month)</div>
+              <div className="text-sm text-slate-400">
+                {filtersApplied ? 'Approved (filtered)' : 'Approved (this month)'}
+              </div>
               <div className="text-3xl font-bold text-sky-700">{kpis.approvedThisMonth}</div>
-              <div className="text-xs text-slate-500 mt-1">Approvals completed this month</div>
+              <div className="text-xs text-slate-500 mt-1">
+                {filtersApplied ? 'Approvals in filtered period' : 'Approvals completed this month'}
+              </div>
             </div>
             <div>
               <Donut value={kpis.approvedThisMonth} total={Math.max(1, ious.length || 1)} />
@@ -295,26 +456,37 @@ export default function Dashboard() {
           </div>
         </Card>
 
+        {/* Multi-Currency Approved Amount */}
         <Card>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-slate-400">Approved Amount</div>
-              <div className="text-2xl font-bold text-indigo-700">{formatCurrency(kpis.approvedAmount)}</div>
-              <div className="text-xs text-slate-500 mt-1">Value of approved IOUs this month</div>
-            </div>
-            <div className="p-2">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="text-indigo-600">
-                <path d="M12 8v8m0 0l3-3m-3 3l-3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1" opacity="0.12" />
-              </svg>
-            </div>
+          <div>
+            <div className="text-sm text-slate-400">Approved Amount</div>
+            {currencyEntries.length === 0 ? (
+              <div className="text-2xl font-bold text-indigo-700 mt-1">{formatCurrency(0, 'GHS')}</div>
+            ) : (
+              <div className="mt-1 space-y-1.5 max-h-[80px] overflow-y-auto pr-1">
+                {currencyEntries.map(([cur, amt]) => (
+                  <div key={cur} className="flex items-center justify-between gap-2">
+                    <span
+                      className="text-xs font-semibold px-1.5 py-0.5 rounded"
+                      style={{ backgroundColor: (CURRENCY_COLORS[cur] || '#4f46e5') + '18', color: CURRENCY_COLORS[cur] || '#4f46e5' }}
+                    >
+                      {cur}
+                    </span>
+                    <span className="text-lg font-bold" style={{ color: CURRENCY_COLORS[cur] || '#4f46e5' }}>
+                      {formatCurrency(amt, cur)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="text-xs text-slate-500 mt-1.5">{approvedLabel}</div>
           </div>
         </Card>
       </section>
 
       {/* Filters bar */}
       <div className="flex flex-wrap items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
           <input
             placeholder="Search request #, purpose, requester..."
             value={searchLocal}
@@ -337,21 +509,41 @@ export default function Dashboard() {
             <option value="RETURNED">Returned</option>
           </select>
 
-          <button onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); }} className="px-3 py-2 rounded border hidden md:inline">Reset</button>
+          <button onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); }} className="px-3 py-2 rounded border hidden md:inline">Reset</button>
         </div>
 
-        <div className="flex items-center gap-3 w-full md:w-auto">
+        <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
           <label className="text-xs text-slate-500 flex flex-col">
             <span className="text-[11px] text-slate-400">From</span>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="px-3 py-2 rounded border" />
+            <DatePicker
+              selected={startDateObj}
+              onChange={handleStartDateChange}
+              minDate={minDateLimit}
+              maxDate={todayDate}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Start date"
+              className="px-3 py-2 rounded border text-sm w-36"
+              portalId="datepicker-portal"
+              isClearable
+            />
           </label>
 
           <label className="text-xs text-slate-500 flex flex-col">
             <span className="text-[11px] text-slate-400">To</span>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-3 py-2 rounded border" />
+            <DatePicker
+              selected={endDateObj}
+              onChange={handleEndDateChange}
+              minDate={startDateObj || minDateLimit}
+              maxDate={todayDate}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="End date"
+              className="px-3 py-2 rounded border text-sm w-36"
+              portalId="datepicker-portal"
+              isClearable
+            />
           </label>
 
-          {user?.is_admin && (
+          {canSeeAll && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={viewModeAll} onChange={e => setViewModeAll(e.target.checked)} />
               View all IOUs
@@ -362,8 +554,33 @@ export default function Dashboard() {
             <input type="checkbox" checked={showApprovedByMe} onChange={e => setShowApprovedByMe(e.target.checked)} />
             Show IOUs I've approved
           </label>
+
+          {/* Export button */}
+          {canExport && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-700 text-white text-sm font-medium hover:from-blue-600 hover:to-blue-800 transition-all disabled:opacity-50 shadow-sm"
+              title="Export redeemed IOUs to Excel"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {exporting ? 'Exporting...' : 'Export'}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Export message */}
+      {exportMsg && (
+        <div className={`text-sm p-3 rounded-lg border ${exportMsg.startsWith('✅') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : exportMsg.startsWith('❌') ? 'bg-red-50 border-red-200 text-red-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+          {exportMsg}
+          <button onClick={() => setExportMsg('')} className="ml-3 text-xs underline opacity-60">dismiss</button>
+        </div>
+      )}
 
       {/* Main grid responsive */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">

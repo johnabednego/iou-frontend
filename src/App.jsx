@@ -11,6 +11,7 @@ import AdminApprovers from './pages/AdminApprovers';
 import AdminUsers from './pages/AdminUsers';
 import AuditLogs from './pages/AuditLogs';
 import RedeemedRequests from './pages/RedeemedRequests';
+import Settings from './pages/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleProtected from './components/RoleProtected';
 
@@ -33,7 +34,7 @@ export default function App(){
           </RoleProtected>
         } />
         <Route path="redeemed" element={
-          <RoleProtected roles={['admin', 'cashier']}>
+          <RoleProtected roles={['admin', 'cashier']} allowApprover={true}>
             <RedeemedRequests />
           </RoleProtected>
         } />
@@ -53,6 +54,12 @@ export default function App(){
         <Route path="admin/audit-logs" element={
           <RoleProtected roles={['admin']}>
             <AuditLogs />
+          </RoleProtected>
+        } />
+
+        <Route path="admin/settings" element={
+          <RoleProtected roles={['admin']}>
+            <Settings />
           </RoleProtected>
         } />
 

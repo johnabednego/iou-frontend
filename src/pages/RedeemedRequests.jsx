@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { listIOUs } from '../services/iouService';
+import React, { useContext, useEffect, useState } from 'react';
+import { listIOUs, exportIOUs, getDateLimit } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { Link } from 'react-router-dom';
+import { AuthContext } from '../contexts/AuthContext';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 function formatCurrency(n, currency = 'GHS') {
   if (n == null) return `${currency} 0.00`;
@@ -15,11 +18,35 @@ function shortDate(dt) {
 }
 
 export default function RedeemedRequests() {
+  const { user } = useContext(AuthContext);
   const [ious, setIous] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState('');
+  const [minDateLimit, setMinDateLimit] = useState(null);
+  const todayDate = new Date();
+  todayDate.setHours(23, 59, 59, 999);
+
+  // Check export permission: cashier, admin, or approver
+  const canExport = user?.is_admin || user?.role === 'cashier' || user?.is_approver === true;
+
+  // Fetch admin date limit on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getDateLimit();
+        if (res.data?.min_date) {
+          setMinDateLimit(new Date(res.data.min_date));
+        }
+      } catch (_) {
+        const now = new Date();
+        setMinDateLimit(new Date(now.getFullYear(), now.getMonth(), 1));
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -49,6 +76,50 @@ export default function RedeemedRequests() {
     }
   }
 
+  // Export handler
+  async function handleExport() {
+    setExportMsg('');
+    setExporting(true);
+    try {
+      const params = {};
+      if (search.trim()) params.search = search.trim();
+      if (startDate) params.start_date = startDate;
+      if (endDate) params.end_date = endDate;
+
+      const res = await exportIOUs(params);
+      const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      a.download = `redeemed_ious_${timestamp}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setExportMsg('✅ Export downloaded successfully.');
+    } catch (err) {
+      console.error('Export error', err);
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          setExportMsg(`❌ ${json.message || 'Export failed.'}`);
+        } catch (_) {
+          setExportMsg('❌ Export failed. Please try again.');
+        }
+      } else {
+        setExportMsg(`❌ ${err?.response?.data?.message || 'Export failed. Please try again.'}`);
+      }
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  // Date picker helpers
+  const startDateObj = startDate ? new Date(startDate) : null;
+  const endDateObj = endDate ? new Date(endDate) : null;
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -57,10 +128,35 @@ export default function RedeemedRequests() {
           <h2 className="text-2xl font-bold text-slate-800">Redeemed Requests</h2>
           <p className="text-sm text-slate-500">All fully reconciled and redeemed IOUs with IFS voucher numbers.</p>
         </div>
-        <span className="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
-          {ious.length} Redeemed
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="px-3 py-1 rounded-full bg-green-100 text-green-800 text-sm font-semibold">
+            {ious.length} Redeemed
+          </span>
+          {canExport && (
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-700 text-white text-sm font-medium hover:from-blue-600 hover:to-blue-800 transition-all disabled:opacity-50 shadow-sm"
+              title="Export redeemed IOUs to Excel"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              {exporting ? 'Exporting...' : 'Export to Excel'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Export message */}
+      {exportMsg && (
+        <div className={`text-sm p-3 rounded-lg border ${exportMsg.startsWith('✅') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+          {exportMsg}
+          <button onClick={() => setExportMsg('')} className="ml-3 text-xs underline opacity-60">dismiss</button>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -76,20 +172,30 @@ export default function RedeemedRequests() {
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 block font-medium">From</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            <DatePicker
+              selected={startDateObj}
+              onChange={(date) => setStartDate(date ? date.toISOString().slice(0, 10) : '')}
+              minDate={minDateLimit}
+              maxDate={todayDate}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="Start date"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-36"
+              portalId="datepicker-portal"
+              isClearable
             />
           </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 block font-medium">To</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 text-sm"
+            <DatePicker
+              selected={endDateObj}
+              onChange={(date) => setEndDate(date ? date.toISOString().slice(0, 10) : '')}
+              minDate={startDateObj || minDateLimit}
+              maxDate={todayDate}
+              dateFormat="yyyy-MM-dd"
+              placeholderText="End date"
+              className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-36"
+              portalId="datepicker-portal"
+              isClearable
             />
           </div>
           <button
