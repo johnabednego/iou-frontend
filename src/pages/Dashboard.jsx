@@ -327,6 +327,10 @@ export default function Dashboard() {
   // Export handler
   async function handleExport() {
     setExportMsg('');
+    if (filteredIousLocal.length === 0) {
+      setExportMsg('ℹ️ There are no IOUs matching the current filters to export.');
+      return;
+    }
     setExporting(true);
     try {
       const params = {};
@@ -353,16 +357,17 @@ export default function Dashboard() {
       setExportMsg('✅ Export downloaded successfully.');
     } catch (err) {
       console.error('Export error', err);
-      const msg = err?.response?.data?.message || 'Export failed. Please try again.';
+      let msg = err?.response?.data?.message || 'Export failed. Please try again.';
       // If response is blob, try to read it
       if (err?.response?.data instanceof Blob) {
         try {
           const text = await err.response.data.text();
           const json = JSON.parse(text);
-          setExportMsg(`❌ ${json.message || 'Export failed.'}`);
-        } catch (_) {
-          setExportMsg(`❌ ${msg}`);
-        }
+          msg = json.message || msg;
+        } catch (_) {}
+      }
+      if (msg.toLowerCase().includes('no ious found')) {
+        setExportMsg(`ℹ️ ${msg}`);
       } else {
         setExportMsg(`❌ ${msg}`);
       }

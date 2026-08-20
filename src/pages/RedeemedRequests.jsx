@@ -81,6 +81,10 @@ export default function RedeemedRequests() {
   // Export handler
   async function handleExport() {
     setExportMsg('');
+    if (ious.length === 0) {
+      setExportMsg('ℹ️ There are no redeemed IOUs matching the current filters to export.');
+      return;
+    }
     setExporting(true);
     try {
       const params = { status: 'REDEEMED', all: true };
@@ -103,16 +107,18 @@ export default function RedeemedRequests() {
       setExportMsg('✅ Export downloaded successfully.');
     } catch (err) {
       console.error('Export error', err);
+      let msg = err?.response?.data?.message || 'Export failed. Please try again.';
       if (err?.response?.data instanceof Blob) {
         try {
           const text = await err.response.data.text();
           const json = JSON.parse(text);
-          setExportMsg(`❌ ${json.message || 'Export failed.'}`);
-        } catch (_) {
-          setExportMsg('❌ Export failed. Please try again.');
-        }
+          msg = json.message || msg;
+        } catch (_) {}
+      }
+      if (msg.toLowerCase().includes('no ious found')) {
+        setExportMsg(`ℹ️ ${msg}`);
       } else {
-        setExportMsg(`❌ ${err?.response?.data?.message || 'Export failed. Please try again.'}`);
+        setExportMsg(`❌ ${msg}`);
       }
     } finally {
       setExporting(false);
@@ -155,7 +161,13 @@ export default function RedeemedRequests() {
 
       {/* Export message */}
       {exportMsg && (
-        <div className={`text-sm p-3 rounded-lg border ${exportMsg.startsWith('✅') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+        <div className={`text-sm p-3 rounded-lg border ${
+          exportMsg.startsWith('✅')
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+            : exportMsg.startsWith('ℹ️')
+            ? 'bg-blue-50 border-blue-200 text-blue-700'
+            : 'bg-red-50 border-red-200 text-red-700'
+        }`}>
           {exportMsg}
           <button onClick={() => setExportMsg('')} className="ml-3 text-xs underline opacity-60">dismiss</button>
         </div>
