@@ -69,6 +69,7 @@ export default function IOUList() {
   const [statusFilter, setStatusFilter] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [spendingFilter, setSpendingFilter] = useState('');
   const [viewAll, setViewAll] = useState(false);
 
   const canViewAll = user?.is_admin || user?.role === 'cashier';
@@ -78,7 +79,7 @@ export default function IOUList() {
       fetchIOUs();
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, statusFilter, startDate, endDate, viewAll]);
+  }, [search, statusFilter, startDate, endDate, viewAll, spendingFilter]);
 
   async function fetchIOUs() {
     setLoading(true);
@@ -88,6 +89,7 @@ export default function IOUList() {
       if (statusFilter) params.status = statusFilter;
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
+      if (spendingFilter) params.spending = spendingFilter;
       if (canViewAll && viewAll) params.all = true;
       const res = await listIOUs(params);
       setIous(res.data.data || []);
@@ -133,13 +135,22 @@ export default function IOUList() {
             <label className="text-xs text-slate-500 mb-1 block">To</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm" />
           </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Spending</label>
+            <select value={spendingFilter} onChange={e => setSpendingFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+              <option value="">All</option>
+              <option value="overspent">Overspent</option>
+              <option value="underspent">Underspent</option>
+              <option value="exact">Exact</option>
+            </select>
+          </div>
           {canViewAll && (
             <label className="flex items-center gap-2 text-sm cursor-pointer py-2">
               <input type="checkbox" checked={viewAll} onChange={e => setViewAll(e.target.checked)} className="rounded" />
               View all
             </label>
           )}
-          <button onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-800">
+          <button onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-800">
             Reset
           </button>
         </div>
@@ -167,12 +178,29 @@ export default function IOUList() {
                   <th className="text-left py-3 px-2">Department</th>
                   <th className="text-right py-3 px-2">Amount</th>
                   <th className="text-center py-3 px-2">Status</th>
+                  <th className="text-center py-3 px-2">Spending</th>
                   <th className="text-left py-3 px-2">IFS Voucher</th>
                   <th className="text-right py-3 px-2">Created</th>
                 </tr>
               </thead>
               <tbody>
-                {ious.map(iou => (
+                {ious.map(iou => {
+                  const recon = iou.reconciliation;
+                  const expense = (iou.expenses && iou.expenses.length > 0) ? iou.expenses[0] : null;
+                  let spendingLabel = null;
+                  let spendingClass = '';
+                  if (recon && recon.diff_amount !== undefined && recon.diff_amount !== null) {
+                    const diff = Number(recon.diff_amount);
+                    if (diff > 0) { spendingLabel = 'Overspent'; spendingClass = 'bg-red-100 text-red-700'; }
+                    else if (diff < 0) { spendingLabel = 'Underspent'; spendingClass = 'bg-amber-100 text-amber-700'; }
+                    else { spendingLabel = 'Exact'; spendingClass = 'bg-emerald-100 text-emerald-700'; }
+                  } else if (expense && expense.actual_amount && iou.estimated_amount) {
+                    const diff = Number(expense.actual_amount) - Number(iou.estimated_amount);
+                    if (diff > 0) { spendingLabel = 'Overspent'; spendingClass = 'bg-red-100 text-red-700'; }
+                    else if (diff < 0) { spendingLabel = 'Underspent'; spendingClass = 'bg-amber-100 text-amber-700'; }
+                    else { spendingLabel = 'Exact'; spendingClass = 'bg-emerald-100 text-emerald-700'; }
+                  }
+                  return (
                   <tr key={iou.id} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
                     <td className="py-3 px-2">
                       <Link to={`/ious/${iou.id}`} className="font-medium text-slate-800 hover:text-emerald-700 hover:underline">
@@ -186,6 +214,13 @@ export default function IOUList() {
                     <td className="py-3 px-2 text-slate-600">{iou.department || '-'}</td>
                     <td className="py-3 px-2 text-right font-medium">{formatCurrency(iou.estimated_amount, iou.currency)}</td>
                     <td className="py-3 px-2 text-center"><StatusBadge status={iou.status} /></td>
+                    <td className="py-3 px-2 text-center">
+                      {spendingLabel ? (
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${spendingClass}`}>{spendingLabel}</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
                     <td className="py-3 px-2">
                       {iou.ifs_voucher_number ? (
                         <a
@@ -203,7 +238,8 @@ export default function IOUList() {
                     </td>
                     <td className="py-3 px-2 text-right text-slate-500 text-xs">{shortDate(iou.created_at)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

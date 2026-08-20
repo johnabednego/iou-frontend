@@ -117,6 +117,7 @@ export default function Dashboard() {
   const [endDate, setEndDate] = useState('');
   const [viewModeAll, setViewModeAll] = useState(false); // admin/approver toggle
   const [showApprovedByMe, setShowApprovedByMe] = useState(false);
+  const [spendingFilter, setSpendingFilter] = useState(''); // overspent / underspent / exact
 
   // Admin-controlled date limit
   const [minDateLimit, setMinDateLimit] = useState(null); // Date object or null
@@ -194,7 +195,7 @@ export default function Dashboard() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, statusFilter, viewModeAll, showApprovedByMe]);
+  }, [startDate, endDate, statusFilter, viewModeAll, showApprovedByMe, spendingFilter]);
 
   // load data from backend when query (debounced search) or other filters change
   useEffect(() => {
@@ -209,7 +210,8 @@ export default function Dashboard() {
           status: statusFilter || undefined,
           start_date: startDate || undefined,
           end_date: endDate || undefined,
-          search: query || undefined
+          search: query || undefined,
+          spending: spendingFilter || undefined
         };
 
         if (canSeeAll && viewModeAll) params.all = true;
@@ -246,7 +248,7 @@ export default function Dashboard() {
       if (reloadIntervalRef.current) clearInterval(reloadIntervalRef.current);
     };
     // include only the meaningful deps (query is debounced)
-  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll]);
+  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll, spendingFilter]);
 
   // Determine if filters are applied
   const filtersApplied = !!(startDate || endDate || statusFilter || searchLocal.trim() || showApprovedByMe);
@@ -325,17 +327,16 @@ export default function Dashboard() {
   // Export handler
   async function handleExport() {
     setExportMsg('');
-    // Inform user that only redeemed IOUs are exported
-    if (statusFilter && statusFilter !== 'REDEEMED') {
-      setExportMsg('ℹ️ Only redeemed (completed) IOUs can be exported. Your status filter will be overridden to "Redeemed".');
-    }
     setExporting(true);
     try {
       const params = {};
       if (searchLocal.trim()) params.search = searchLocal.trim();
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
-      // Status is always forced to REDEEMED on the backend
+      if (statusFilter) params.status = statusFilter;
+      if (spendingFilter) params.spending = spendingFilter;
+      if (canSeeAll && viewModeAll) params.all = true;
+      if (showApprovedByMe) params.approved_by = user?.id;
 
       const res = await exportIOUs(params);
       // Create download link from blob
@@ -344,7 +345,7 @@ export default function Dashboard() {
       const a = document.createElement('a');
       a.href = url;
       const timestamp = new Date().toISOString().slice(0, 10);
-      a.download = `redeemed_ious_${timestamp}.xlsx`;
+      a.download = `ious_export_${timestamp}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -509,7 +510,14 @@ export default function Dashboard() {
             <option value="RETURNED">Returned</option>
           </select>
 
-          <button onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); }} className="px-3 py-2 rounded border hidden md:inline">Reset</button>
+          <select value={spendingFilter} onChange={e => setSpendingFilter(e.target.value)} className="px-3 py-2 rounded border">
+            <option value="">All spending</option>
+            <option value="overspent">Overspent</option>
+            <option value="underspent">Underspent</option>
+            <option value="exact">Exact</option>
+          </select>
+
+          <button onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); setSpendingFilter(''); }} className="px-3 py-2 rounded border hidden md:inline">Reset</button>
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
@@ -604,22 +612,64 @@ export default function Dashboard() {
                       <th className="text-left py-2">Requester</th>
                       <th className="text-left py-2">Amount</th>
                       <th className="text-left py-2">Status</th>
+                      <th className="text-left py-2">Spending</th>
                       <th className="text-right py-2">When</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredIousLocal.map(i => (
-                      <tr key={i.id} className="border-t hover:bg-slate-50">
-                        <td className="py-3">
-                          <Link to={`/ious/${i.id}`} className="font-medium text-slate-800 underline">{i.request_number}</Link>
-                          <div className="text-xs text-slate-500 line-clamp-2">{i.purpose}</div>
-                        </td>
-                        <td className="py-3">{ (i.requester && i.requester.display_name) || i.requester_name || i.requester_id }</td>
-                        <td className="py-3">{ formatCurrency(i.estimated_amount, i.currency) }</td>
-                        <td className="py-3"><StatusBadge status={i.status} /></td>
-                        <td className="py-3 text-right text-xs text-slate-500">{ shortDate(i.created_at || i.submitted_at || i.updated_at) }</td>
-                      </tr>
-                    ))}
+                    {filteredIousLocal.map(i => {
+                      // Determine spending outcome from reconciliation or expense data
+                      const recon = i.reconciliation;
+                      const expense = (i.expenses && i.expenses.length > 0) ? i.expenses[0] : null;
+                      let spendingLabel = null;
+                      let spendingClass = '';
+                      if (recon && recon.diff_amount !== undefined && recon.diff_amount !== null) {
+                        const diff = Number(recon.diff_amount);
+                        if (diff > 0) {
+                          spendingLabel = 'Overspent';
+                          spendingClass = 'bg-red-100 text-red-700';
+                        } else if (diff < 0) {
+                          spendingLabel = 'Underspent';
+                          spendingClass = 'bg-amber-100 text-amber-700';
+                        } else {
+                          spendingLabel = 'Exact';
+                          spendingClass = 'bg-emerald-100 text-emerald-700';
+                        }
+                      } else if (expense && expense.actual_amount && i.estimated_amount) {
+                        const diff = Number(expense.actual_amount) - Number(i.estimated_amount);
+                        if (diff > 0) {
+                          spendingLabel = 'Overspent';
+                          spendingClass = 'bg-red-100 text-red-700';
+                        } else if (diff < 0) {
+                          spendingLabel = 'Underspent';
+                          spendingClass = 'bg-amber-100 text-amber-700';
+                        } else {
+                          spendingLabel = 'Exact';
+                          spendingClass = 'bg-emerald-100 text-emerald-700';
+                        }
+                      }
+                      return (
+                        <tr key={i.id} className="border-t hover:bg-slate-50">
+                          <td className="py-3">
+                            <Link to={`/ious/${i.id}`} className="font-medium text-slate-800 underline">{i.request_number}</Link>
+                            <div className="text-xs text-slate-500 line-clamp-2">{i.purpose}</div>
+                          </td>
+                          <td className="py-3">{ (i.requester && i.requester.display_name) || i.requester_name || i.requester_id }</td>
+                          <td className="py-3">{ formatCurrency(i.estimated_amount, i.currency) }</td>
+                          <td className="py-3"><StatusBadge status={i.status} /></td>
+                          <td className="py-3">
+                              {spendingLabel ? (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${spendingClass}`}>
+                                  {spendingLabel}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
+                            </td>
+                          <td className="py-3 text-right text-xs text-slate-500">{ shortDate(i.created_at || i.submitted_at || i.updated_at) }</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
