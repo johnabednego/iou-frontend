@@ -2,11 +2,16 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { exportIOUs, getDateLimit } from '../services/iouService';
+import { exportIOUs, getDateLimit, getDashboardAnalytics, getCurrencies, getFundBalances } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { AuthContext } from '../contexts/AuthContext';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
+import MonthlyIOUChart from '../components/charts/MonthlyIOUChart';
+import WeeklyTrendChart from '../components/charts/WeeklyTrendChart';
+import SpendingPieChart from '../components/charts/SpendingPieChart';
+import StatusDistributionChart from '../components/charts/StatusDistributionChart';
+import ApprovedAmountsChart from '../components/charts/ApprovedAmountsChart';
 
 /* Sparkline */
 function Sparkline({ data = [], width = 120, height = 28, stroke = '#065f46' }) {
@@ -118,6 +123,12 @@ export default function Dashboard() {
   const [viewModeAll, setViewModeAll] = useState(false); // admin/approver toggle
   const [showApprovedByMe, setShowApprovedByMe] = useState(false);
   const [spendingFilter, setSpendingFilter] = useState(''); // overspent / underspent / exact
+  const [currencyFilter, setCurrencyFilter] = useState(''); // currency code filter
+
+  // Analytics data for charts
+  const [analytics, setAnalytics] = useState(null);
+  const [currencies, setCurrencies] = useState([]);
+  const [fundBalances, setFundBalances] = useState([]);
 
   // Admin-controlled date limit
   const [minDateLimit, setMinDateLimit] = useState(null); // Date object or null
@@ -160,6 +171,28 @@ export default function Dashboard() {
     })();
   }, []);
 
+  // Fetch analytics, currencies, and fund balances
+  useEffect(() => {
+    (async () => {
+      try {
+        const [aRes, cRes] = await Promise.all([
+          getDashboardAnalytics().catch(() => ({ data: { data: null } })),
+          getCurrencies({ include_inactive: 'true' }).catch(() => ({ data: { data: [] } }))
+        ]);
+        setAnalytics(aRes.data?.data || null);
+        setCurrencies(cRes.data?.data || []);
+      } catch (_) {}
+
+      // Fund balances (privileged only)
+      if (canSeeAll) {
+        try {
+          const fRes = await getFundBalances();
+          setFundBalances(fRes.data?.data || []);
+        } catch (_) {}
+      }
+    })();
+  }, [canSeeAll]);
+
   // Local immediate filter for UX - compute filteredIous using searchLocal (client-side)
   const filteredIousLocal = useMemo(() => {
     const q = (searchLocal || '').trim().toLowerCase();
@@ -195,7 +228,7 @@ export default function Dashboard() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, statusFilter, viewModeAll, showApprovedByMe, spendingFilter]);
+  }, [startDate, endDate, statusFilter, viewModeAll, showApprovedByMe, spendingFilter, currencyFilter]);
 
   // load data from backend when query (debounced search) or other filters change
   useEffect(() => {
@@ -211,7 +244,8 @@ export default function Dashboard() {
           start_date: startDate || undefined,
           end_date: endDate || undefined,
           search: query || undefined,
-          spending: spendingFilter || undefined
+          spending: spendingFilter || undefined,
+          currency: currencyFilter || undefined
         };
 
         if (canSeeAll && viewModeAll) params.all = true;
@@ -248,7 +282,7 @@ export default function Dashboard() {
       if (reloadIntervalRef.current) clearInterval(reloadIntervalRef.current);
     };
     // include only the meaningful deps (query is debounced)
-  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll, spendingFilter]);
+  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll, spendingFilter, currencyFilter]);
 
   // Determine if filters are applied
   const filtersApplied = !!(startDate || endDate || statusFilter || searchLocal.trim() || showApprovedByMe);
@@ -387,8 +421,13 @@ export default function Dashboard() {
     setEndDate(date ? date.toISOString().slice(0, 10) : '');
   }
 
-  // Currency entries for the approved amount card
-  const currencyEntries = Object.entries(kpis.approvedAmountByCurrency || {}).filter(([_, v]) => v > 0);
+  // All 4 default currencies should always show, even if amount is 0
+  const ALL_CURRENCIES = ['GHS', 'USD', 'EUR', 'GBP'];
+  const activeCurrencyCodes = currencies.filter(c => c.is_active).map(c => c.code);
+  const displayCurrencies = [...new Set([...ALL_CURRENCIES, ...activeCurrencyCodes])];
+  const currencyEntries = displayCurrencies.map(cur => [
+    cur, (kpis.approvedAmountByCurrency || {})[cur] || 0
+  ]);
 
   // while loading show skeleton but don't disrupt searchLocal focus
   if (loading) {
@@ -434,12 +473,12 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-slate-400">Pending IOUs</div>
-              <div className="text-3xl font-bold text-emerald-700">{kpis.pendingCount}</div>
-              <div className="text-xs text-slate-500 mt-1">Requests awaiting approval</div>
+              <div className="text-3xl font-bold text-emerald-700">{analytics?.pendingTotal ?? kpis.pendingCount}</div>
+              <div className="text-xs text-slate-500 mt-1">All requests awaiting approval</div>
             </div>
             <div className="flex flex-col items-center gap-2">
               <Sparkline data={kpis.sparkData} />
-              <div className="text-xs text-slate-400">Last 7 days</div>
+              <div className="text-xs text-slate-400">Trend (7d)</div>
             </div>
           </div>
         </Card>
@@ -462,33 +501,102 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* Multi-Currency Approved Amount */}
+        {/* Multi-Currency Approved Amount — always show all currencies */}
         <Card>
           <div>
             <div className="text-sm text-slate-400">Approved Amount</div>
-            {currencyEntries.length === 0 ? (
-              <div className="text-2xl font-bold text-indigo-700 mt-1">{formatCurrency(0, 'GHS')}</div>
-            ) : (
-              <div className="mt-1 space-y-1.5 max-h-[80px] overflow-y-auto pr-1">
-                {currencyEntries.map(([cur, amt]) => (
-                  <div key={cur} className="flex items-center justify-between gap-2">
-                    <span
-                      className="text-xs font-semibold px-1.5 py-0.5 rounded"
-                      style={{ backgroundColor: (CURRENCY_COLORS[cur] || '#4f46e5') + '18', color: CURRENCY_COLORS[cur] || '#4f46e5' }}
-                    >
-                      {cur}
-                    </span>
-                    <span className="text-lg font-bold" style={{ color: CURRENCY_COLORS[cur] || '#4f46e5' }}>
-                      {formatCurrency(amt, cur)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="mt-1 space-y-1.5 max-h-[80px] overflow-y-auto pr-1">
+              {currencyEntries.map(([cur, amt]) => (
+                <div key={cur} className="flex items-center justify-between gap-2">
+                  <span
+                    className="text-xs font-semibold px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: (CURRENCY_COLORS[cur] || '#4f46e5') + '18', color: CURRENCY_COLORS[cur] || '#4f46e5' }}
+                  >
+                    {cur}
+                  </span>
+                  <span className="text-lg font-bold" style={{ color: CURRENCY_COLORS[cur] || '#4f46e5' }}>
+                    {formatCurrency(amt, cur)}
+                  </span>
+                </div>
+              ))}
+            </div>
             <div className="text-xs text-slate-500 mt-1.5">{approvedLabel}</div>
           </div>
         </Card>
       </section>
+
+      {/* Fund Balance Card — only for privileged users */}
+      {canSeeAll && fundBalances.length > 0 && (
+        <section className="mt-2">
+          <Card>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold text-slate-600">💰 Available Fund Balances</div>
+              <Link to="/fund-management" className="text-xs text-emerald-600 hover:underline">Manage →</Link>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {fundBalances.map(fb => {
+                const amt = Number(fb.available_amount) || 0;
+                const isLow = amt < 1000;
+                return (
+                  <div
+                    key={fb.currency}
+                    className={`p-3 rounded-lg border-l-4 ${
+                      isLow ? 'bg-red-50 border-l-red-400' : 'bg-emerald-50 border-l-emerald-400'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold text-slate-500">{fb.currency}</div>
+                    <div className={`text-lg font-bold ${isLow ? 'text-red-600' : 'text-emerald-700'}`}>
+                      {formatCurrency(amt, fb.currency)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </section>
+      )}
+
+      {/* ═══════ CHARTS SECTION ═══════ */}
+      {analytics && (
+        <section className="space-y-6 mt-2">
+          {/* Row 1: Monthly IOUs + Spending Pie */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <div className="text-sm font-semibold text-slate-600 mb-2">📊 IOUs by Month (Last 12 Months)</div>
+                <MonthlyIOUChart data={analytics.iousByMonth} />
+              </Card>
+            </div>
+            <div>
+              <Card>
+                <div className="text-sm font-semibold text-slate-600 mb-2">🎯 Spending Breakdown</div>
+                <SpendingPieChart data={analytics.spendingBreakdown} />
+              </Card>
+            </div>
+          </div>
+
+          {/* Row 2: Weekly Trend + Status Distribution */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <div className="text-sm font-semibold text-slate-600 mb-2">📈 Weekly Trend (Last 8 Weeks)</div>
+              <WeeklyTrendChart data={analytics.iousByWeek} />
+            </Card>
+            <Card>
+              <div className="text-sm font-semibold text-slate-600 mb-2">📋 Status Distribution</div>
+              <StatusDistributionChart data={analytics.statusDistribution} />
+            </Card>
+          </div>
+
+          {/* Row 3: Approved Amounts by Currency */}
+          <Card>
+            <div className="text-sm font-semibold text-slate-600 mb-2">💵 Approved Amounts by Currency</div>
+            <ApprovedAmountsChart
+              amounts={analytics.approvedAmounts}
+              monthlyChart={analytics.monthlyApprovedChart}
+            />
+          </Card>
+        </section>
+      )}
 
       {/* Filters bar */}
       <div className="flex flex-wrap items-start md:items-center justify-between gap-4">
@@ -522,7 +630,14 @@ export default function Dashboard() {
             <option value="exact">Exact</option>
           </select>
 
-          <button onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); setSpendingFilter(''); }} className="px-3 py-2 rounded border hidden md:inline">Reset</button>
+          <select value={currencyFilter} onChange={e => setCurrencyFilter(e.target.value)} className="px-3 py-2 rounded border">
+            <option value="">All currencies</option>
+            {currencies.filter(c => c.is_active).map(c => (
+              <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
+            ))}
+          </select>
+
+          <button onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); setSpendingFilter(''); setCurrencyFilter(''); }} className="px-3 py-2 rounded border hidden md:inline">Reset</button>
         </div>
 
         <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">

@@ -1,5 +1,5 @@
-import React, { useState, useContext } from 'react';
-import { createIOU } from '../services/iouService';
+import React, { useState, useContext, useEffect, useCallback } from 'react';
+import { createIOU, checkFunds, getCurrencies } from '../services/iouService';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
@@ -17,6 +17,57 @@ export default function IOUCreate() {
   const [success, setSuccess] = useState('');
   const nav = useNavigate();
   const { user } = useContext(AuthContext);
+
+  // Fund check state
+  const [fundSufficient, setFundSufficient] = useState(true);
+  const [checkingFunds, setCheckingFunds] = useState(false);
+
+  // Dynamic currencies from DB
+  const [availableCurrencies, setAvailableCurrencies] = useState([]);
+
+  // Load currencies on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getCurrencies();
+        const active = (res.data?.data || []).filter(c => c.is_active);
+        setAvailableCurrencies(active);
+        // Default to first currency if available
+        if (active.length > 0 && !active.find(c => c.code === currency)) {
+          setCurrency(active[0].code);
+        }
+      } catch (_) {
+        // Fallback to hardcoded
+        setAvailableCurrencies([
+          { code: 'GHS', name: 'Ghana Cedi' },
+          { code: 'USD', name: 'US Dollar' },
+          { code: 'EUR', name: 'Euro' },
+          { code: 'GBP', name: 'British Pound' }
+        ]);
+      }
+    })();
+  }, []);
+
+  // Check fund sufficiency when amount or currency changes
+  useEffect(() => {
+    const numAmt = Number(amount);
+    if (!currency || !numAmt || numAmt <= 0) {
+      setFundSufficient(true);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      setCheckingFunds(true);
+      try {
+        const res = await checkFunds(currency, numAmt);
+        setFundSufficient(res.data?.sufficient !== false);
+      } catch (_) {
+        setFundSufficient(true); // Don't block on network error
+      } finally {
+        setCheckingFunds(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [amount, currency]);
 
   const safeAttachments = attachments.filter(
     (att) => att && typeof att === 'object' && att.file_name
@@ -128,10 +179,9 @@ export default function IOUCreate() {
                 onChange={(e) => setCurrency(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm bg-white"
               >
-                <option value="GHS">GHS – Ghana Cedi</option>
-                <option value="USD">USD – US Dollar</option>
-                <option value="EUR">EUR – Euro</option>
-                <option value="GBP">GBP – British Pound</option>
+                {availableCurrencies.map(c => (
+                  <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -186,9 +236,20 @@ export default function IOUCreate() {
             )}
           </div>
 
+          {!fundSufficient && (
+            <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm flex items-center gap-2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span>Insufficient funds available for <strong>{currency}</strong>. Please contact the Finance Department.</span>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
-            <Button onClick={handleCreate} disabled={submitting}>
-              {submitting ? 'Saving...' : 'Save'}
+            <Button onClick={handleCreate} disabled={submitting || !fundSufficient}>
+              {submitting ? 'Saving...' : !fundSufficient ? 'Insufficient Funds' : 'Save'}
             </Button>
             <Button variant="secondary" onClick={() => nav('/ious')}>
               Cancel

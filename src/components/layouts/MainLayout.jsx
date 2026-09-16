@@ -66,6 +66,7 @@ export default function MainLayout() {
         <NavItem to="/ious/create" label="Request IOU" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
         <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
         <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
+        <NavItem to="/fund-management" label="Fund Management" show={user?.is_admin || user?.role === 'cashier'} isActive={isActivePath('/fund-management')} onClick={closeSidebar} />
         {/* admin & cashier links */}
         <NavItem to="/admin/approvers" label="Approvers" show={user?.is_admin} isActive={isActivePath('/admin/approvers')} onClick={closeSidebar} />
         <NavItem to="/admin/users" label="Users" show={user?.is_admin} isActive={isActivePath('/admin/users')} onClick={closeSidebar} />

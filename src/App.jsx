@@ -12,6 +12,7 @@ import AdminUsers from './pages/AdminUsers';
 import AuditLogs from './pages/AuditLogs';
 import RedeemedRequests from './pages/RedeemedRequests';
 import Settings from './pages/Settings';
+import FundManagement from './pages/FundManagement';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleProtected from './components/RoleProtected';
 
@@ -60,6 +61,12 @@ export default function App(){
         <Route path="admin/settings" element={
           <RoleProtected roles={['admin']}>
             <Settings />
+          </RoleProtected>
+        } />
+
+        <Route path="fund-management" element={
+          <RoleProtected roles={['admin', 'cashier']}>
+            <FundManagement />
           </RoleProtected>
         } />
 

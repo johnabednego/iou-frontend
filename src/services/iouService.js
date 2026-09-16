@@ -78,3 +78,17 @@ export const exportIOUs = (params = {}) => api.get('/ious/export', {
   responseType: 'blob'
 });
 
+// Currencies
+export const getCurrencies = (params) => api.get('/currencies', { params });
+export const addCurrency = (data) => api.post('/currencies', data);
+export const updateCurrency = (id, data) => api.put(`/currencies/${id}`, data);
+export const deleteCurrency = (id) => api.delete(`/currencies/${id}`);
+
+// Fund Management
+export const getFundBalances = () => api.get('/funds');
+export const updateFundBalance = (currency, data) => api.put(`/funds/${currency}`, data);
+export const checkFunds = (currency, amount) => api.get(`/funds/check/${currency}/${amount}`);
+export const getFundTransactions = (params) => api.get('/funds/transactions', { params });
+
+// Analytics
+export const getDashboardAnalytics = () => api.get('/analytics/dashboard');

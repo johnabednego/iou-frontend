@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useState } from 'react';
-import { listIOUs, exportIOUs, getDateLimit } from '../services/iouService';
+import { listIOUs, exportIOUs, getDateLimit, getCurrencies } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
@@ -25,6 +25,8 @@ export default function RedeemedRequests() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [spendingFilter, setSpendingFilter] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('');
+  const [currencies, setCurrencies] = useState([]);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
   const [minDateLimit, setMinDateLimit] = useState(null);
@@ -49,12 +51,17 @@ export default function RedeemedRequests() {
     })();
   }, []);
 
+  // Load currencies
+  useEffect(() => {
+    getCurrencies({ include_inactive: 'true' }).then(res => setCurrencies(res.data?.data || [])).catch(() => {});
+  }, []);
+
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchRedeemedIOUs();
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, startDate, endDate, spendingFilter]);
+  }, [search, startDate, endDate, spendingFilter, currencyFilter]);
 
   async function fetchRedeemedIOUs() {
     setLoading(true);
@@ -68,6 +75,7 @@ export default function RedeemedRequests() {
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
       if (spendingFilter) params.spending = spendingFilter;
+      if (currencyFilter) params.currency = currencyFilter;
 
       const res = await listIOUs(params);
       setIous(res.data.data || []);
@@ -92,6 +100,7 @@ export default function RedeemedRequests() {
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
       if (spendingFilter) params.spending = spendingFilter;
+      if (currencyFilter) params.currency = currencyFilter;
 
       const res = await exportIOUs(params);
       const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -222,8 +231,17 @@ export default function RedeemedRequests() {
               <option value="exact">Exact</option>
             </select>
           </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block font-medium">Currency</label>
+            <select value={currencyFilter} onChange={e => setCurrencyFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+              <option value="">All</option>
+              {currencies.filter(c => c.is_active).map(c => (
+                <option key={c.code} value={c.code}>{c.code}</option>
+              ))}
+            </select>
+          </div>
           <button
-            onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); }}
+            onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); setCurrencyFilter(''); }}
             className="px-3 py-2 text-sm text-slate-500 hover:text-slate-800"
           >
             Reset

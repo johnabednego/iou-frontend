@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
-import { listIOUs } from '../services/iouService';
+import { listIOUs, getCurrencies } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
@@ -70,16 +70,23 @@ export default function IOUList() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [spendingFilter, setSpendingFilter] = useState('');
+  const [currencyFilter, setCurrencyFilter] = useState('');
+  const [currencies, setCurrencies] = useState([]);
   const [viewAll, setViewAll] = useState(false);
 
   const canViewAll = user?.is_admin || user?.role === 'cashier';
+
+  // Load currencies on mount
+  useEffect(() => {
+    getCurrencies({ include_inactive: 'true' }).then(res => setCurrencies(res.data?.data || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchIOUs();
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, statusFilter, startDate, endDate, viewAll, spendingFilter]);
+  }, [search, statusFilter, startDate, endDate, viewAll, spendingFilter, currencyFilter]);
 
   async function fetchIOUs() {
     setLoading(true);
@@ -90,6 +97,7 @@ export default function IOUList() {
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
       if (spendingFilter) params.spending = spendingFilter;
+      if (currencyFilter) params.currency = currencyFilter;
       if (canViewAll && viewAll) params.all = true;
       const res = await listIOUs(params);
       setIous(res.data.data || []);
@@ -144,13 +152,22 @@ export default function IOUList() {
               <option value="exact">Exact</option>
             </select>
           </div>
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Currency</label>
+            <select value={currencyFilter} onChange={e => setCurrencyFilter(e.target.value)} className="px-3 py-2 rounded-lg border border-slate-200 text-sm">
+              <option value="">All</option>
+              {currencies.filter(c => c.is_active).map(c => (
+                <option key={c.code} value={c.code}>{c.code}</option>
+              ))}
+            </select>
+          </div>
           {canViewAll && (
             <label className="flex items-center gap-2 text-sm cursor-pointer py-2">
               <input type="checkbox" checked={viewAll} onChange={e => setViewAll(e.target.checked)} className="rounded" />
               View all
             </label>
           )}
-          <button onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-800">
+          <button onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); setCurrencyFilter(''); }} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-800">
             Reset
           </button>
         </div>
