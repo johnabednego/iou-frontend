@@ -2,8 +2,7 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
-const COLORS = ['#ef4444', '#10b981', '#6366f1'];
-const LABELS = ['Overspent', 'Underspent', 'Exact'];
+const COLORS = ['#f87171', '#34d399', '#818cf8'];
 
 const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
   if (percent < 0.05) return null;
@@ -12,7 +11,7 @@ const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
   const y = cy + radius * Math.sin(-midAngle * RADIAN);
   return (
-    <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={600}>
+    <text x={x} y={y} fill="#fff" textAnchor="middle" dominantBaseline="central" fontSize={12} fontWeight={700}>
       {`${(percent * 100).toFixed(0)}%`}
     </text>
   );
@@ -22,11 +21,11 @@ const CustomTooltip = ({ active, payload }) => {
   if (!active || !payload?.length) return null;
   const { name, value } = payload[0];
   return (
-    <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-lg p-3 text-sm">
-      <p className="flex items-center gap-2">
+    <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl p-3 text-sm">
+      <p className="flex items-center gap-2 text-xs">
         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].payload.fill }} />
-        <span className="text-slate-600">{name}:</span>
-        <span className="font-semibold text-slate-800">{value}</span>
+        <span className="text-slate-400">{name}:</span>
+        <span className="font-semibold text-white">{value}</span>
       </p>
     </div>
   );
@@ -75,12 +74,12 @@ export default function SpendingPieChart({ data = {} }) {
         </Pie>
         <Tooltip content={<CustomTooltip />} />
         <Legend
-          wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+          wrapperStyle={{ fontSize: 12, paddingTop: 8, color: '#cbd5e1' }}
           iconType="circle"
           iconSize={8}
         />
         {/* Center text */}
-        <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fontSize={22} fontWeight={700} fill="#1e293b">
+        <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fontSize={22} fontWeight={700} fill="#ffffff">
           {total}
         </text>
         <text x="50%" y="58%" textAnchor="middle" dominantBaseline="central" fontSize={11} fill="#94a3b8">

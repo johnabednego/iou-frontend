@@ -4,22 +4,16 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 
-const COLORS = {
-  approved: '#10b981',
-  pending: '#f59e0b',
-  rejected: '#ef4444'
-};
-
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white/95 backdrop-blur-sm border border-slate-200 rounded-xl shadow-lg p-3 text-sm">
-      <p className="font-semibold text-slate-700 mb-1.5">{label}</p>
+    <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-xl shadow-2xl p-3 text-sm">
+      <p className="font-bold text-white mb-1.5">{label}</p>
       {payload.map((entry, i) => (
-        <p key={i} className="flex items-center gap-2">
+        <p key={i} className="flex items-center gap-2 text-xs">
           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-          <span className="text-slate-600">{entry.name}:</span>
-          <span className="font-semibold text-slate-800">{entry.value}</span>
+          <span className="text-slate-400">{entry.name}:</span>
+          <span className="font-semibold text-white">{entry.value}</span>
         </p>
       ))}
     </div>
@@ -34,34 +28,34 @@ export default function MonthlyIOUChart({ data = [] }) {
       <BarChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
         <defs>
           <linearGradient id="gradApproved" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" stopOpacity={0.9} />
-            <stop offset="100%" stopColor="#059669" stopOpacity={0.7} />
+            <stop offset="0%" stopColor="#34d399" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="#059669" stopOpacity={0.8} />
           </linearGradient>
           <linearGradient id="gradPending" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.9} />
-            <stop offset="100%" stopColor="#d97706" stopOpacity={0.7} />
+            <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="#d97706" stopOpacity={0.8} />
           </linearGradient>
           <linearGradient id="gradRejected" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.9} />
-            <stop offset="100%" stopColor="#dc2626" stopOpacity={0.7} />
+            <stop offset="0%" stopColor="#f87171" stopOpacity={0.95} />
+            <stop offset="100%" stopColor="#dc2626" stopOpacity={0.8} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
         <XAxis
           dataKey="month"
-          tick={{ fontSize: 11, fill: '#64748b' }}
-          axisLine={{ stroke: '#e2e8f0' }}
+          tick={{ fontSize: 11, fill: '#94a3b8' }}
+          axisLine={{ stroke: 'rgba(255,255,255,0.15)' }}
           tickLine={false}
         />
         <YAxis
-          tick={{ fontSize: 11, fill: '#64748b' }}
+          tick={{ fontSize: 11, fill: '#94a3b8' }}
           axisLine={false}
           tickLine={false}
           allowDecimals={false}
         />
         <Tooltip content={<CustomTooltip />} />
         <Legend
-          wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+          wrapperStyle={{ fontSize: 12, paddingTop: 8, color: '#cbd5e1' }}
           iconType="circle"
           iconSize={8}
         />
