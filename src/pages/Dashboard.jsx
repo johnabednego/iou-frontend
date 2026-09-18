@@ -2,7 +2,7 @@
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { exportIOUs, getDateLimit, getDashboardAnalytics, getCurrencies, getFundBalances } from '../services/iouService';
+import { exportIOUs, getDateLimit, getDashboardAnalytics, getCurrencies, getFundBalances, getDepartments } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { AuthContext } from '../contexts/AuthContext';
 import DatePicker from 'react-datepicker';
@@ -12,6 +12,7 @@ import WeeklyTrendChart from '../components/charts/WeeklyTrendChart';
 import SpendingPieChart from '../components/charts/SpendingPieChart';
 import StatusDistributionChart from '../components/charts/StatusDistributionChart';
 import ApprovedAmountsChart from '../components/charts/ApprovedAmountsChart';
+import DepartmentIOUChart from '../components/charts/DepartmentIOUChart';
 
 /* Sparkline */
 function Sparkline({ data = [], width = 120, height = 28, stroke = '#065f46' }) {
@@ -124,6 +125,8 @@ export default function Dashboard() {
   const [showApprovedByMe, setShowApprovedByMe] = useState(false);
   const [spendingFilter, setSpendingFilter] = useState(''); // overspent / underspent / exact
   const [currencyFilter, setCurrencyFilter] = useState(''); // currency code filter
+  const [departmentFilter, setDepartmentFilter] = useState(''); // department filter
+  const [departmentList, setDepartmentList] = useState([]);
 
   // Analytics data for charts
   const [analytics, setAnalytics] = useState(null);
@@ -145,8 +148,10 @@ export default function Dashboard() {
   // Determine user role capabilities
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
   const isApprover = user?.is_approver === true;
+  const isHod = user?.role === 'hod';
   const canSeeAll = isCashierOrAdmin || isApprover;
-  const canExport = isCashierOrAdmin || isApprover;
+  const canExport = isCashierOrAdmin || isApprover || isHod;
+  const canSeeAnalytics = canSeeAll || isHod;
 
   // Set viewModeAll default for cashiers/admins/approvers
   useEffect(() => {
@@ -171,16 +176,18 @@ export default function Dashboard() {
     })();
   }, []);
 
-  // Fetch analytics, currencies, and fund balances
+  // Fetch analytics, currencies, departments, and fund balances
   useEffect(() => {
     (async () => {
       try {
-        const [aRes, cRes] = await Promise.all([
-          getDashboardAnalytics().catch(() => ({ data: { data: null } })),
-          getCurrencies({ include_inactive: 'true' }).catch(() => ({ data: { data: [] } }))
+        const [aRes, cRes, dRes] = await Promise.all([
+          getDashboardAnalytics({ department: departmentFilter || undefined }).catch(() => ({ data: { data: null } })),
+          getCurrencies({ include_inactive: 'true' }).catch(() => ({ data: { data: [] } })),
+          getDepartments().catch(() => ({ data: { data: [] } }))
         ]);
         setAnalytics(aRes.data?.data || null);
         setCurrencies(cRes.data?.data || []);
+        setDepartmentList(dRes.data?.data || []);
       } catch (_) {}
 
       // Fund balances (privileged only)
@@ -191,7 +198,7 @@ export default function Dashboard() {
         } catch (_) {}
       }
     })();
-  }, [canSeeAll]);
+  }, [canSeeAll, departmentFilter]);
 
   // Local immediate filter for UX - compute filteredIous using searchLocal (client-side)
   const filteredIousLocal = useMemo(() => {
@@ -228,7 +235,7 @@ export default function Dashboard() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, statusFilter, viewModeAll, showApprovedByMe, spendingFilter, currencyFilter]);
+  }, [startDate, endDate, statusFilter, viewModeAll, showApprovedByMe, spendingFilter, currencyFilter, departmentFilter]);
 
   // load data from backend when query (debounced search) or other filters change
   useEffect(() => {
@@ -245,7 +252,8 @@ export default function Dashboard() {
           end_date: endDate || undefined,
           search: query || undefined,
           spending: spendingFilter || undefined,
-          currency: currencyFilter || undefined
+          currency: currencyFilter || undefined,
+          department: departmentFilter || undefined
         };
 
         if (canSeeAll && viewModeAll) params.all = true;
@@ -282,10 +290,10 @@ export default function Dashboard() {
       if (reloadIntervalRef.current) clearInterval(reloadIntervalRef.current);
     };
     // include only the meaningful deps (query is debounced)
-  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll, spendingFilter, currencyFilter]);
+  }, [user, statusFilter, query, startDate, endDate, viewModeAll, showApprovedByMe, canSeeAll, spendingFilter, currencyFilter, departmentFilter]);
 
   // Determine if filters are applied
-  const filtersApplied = !!(startDate || endDate || statusFilter || searchLocal.trim() || showApprovedByMe);
+  const filtersApplied = !!(startDate || endDate || statusFilter || searchLocal.trim() || showApprovedByMe || departmentFilter || spendingFilter || currencyFilter);
 
   // KPIs computed off the current (server) ious
   const kpis = useMemo(() => {
@@ -373,6 +381,8 @@ export default function Dashboard() {
       if (endDate) params.end_date = endDate;
       if (statusFilter) params.status = statusFilter;
       if (spendingFilter) params.spending = spendingFilter;
+      if (currencyFilter) params.currency = currencyFilter;
+      if (departmentFilter) params.department = departmentFilter;
       if (canSeeAll && viewModeAll) params.all = true;
       if (showApprovedByMe) params.approved_by = user?.id;
 
@@ -641,8 +651,8 @@ export default function Dashboard() {
         </section>
       )}
 
-      {/* === Charts Section - Privileged Users Only === */}
-      {analytics && canSeeAll && (
+      {/* === Charts Section - Privileged & HOD Users === */}
+      {analytics && canSeeAnalytics && (
         <section className="space-y-5">
           <div className="flex items-center gap-2">
             <div className="w-1 h-5 rounded-full bg-gradient-to-b from-indigo-500 to-blue-600" />
@@ -716,6 +726,20 @@ export default function Dashboard() {
               />
             </div>
           </div>
+
+          {/* Row 4: Department Distribution */}
+          {analytics.departmentBreakdown && analytics.departmentBreakdown.length > 0 && (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#0f172a] border border-blue-500/30 shadow-xl p-6 group">
+              <div className="absolute -right-8 -top-8 w-32 h-32 bg-blue-500/10 rounded-full group-hover:scale-110 transition-transform pointer-events-none blur-xl" />
+              <div className="relative z-10">
+                <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+                  <span>Department Distribution</span>
+                </div>
+                <DepartmentIOUChart data={analytics.departmentBreakdown} />
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -761,6 +785,13 @@ export default function Dashboard() {
             <option value="">All currencies</option>
             {currencies.filter(c => c.is_active).map(c => (
               <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+            ))}
+          </select>
+
+          <select value={departmentFilter} onChange={e => setDepartmentFilter(e.target.value)} className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white/80 text-sm">
+            <option value="">All departments</option>
+            {departmentList.map(d => (
+              <option key={d.id} value={d.name}>{d.name}</option>
             ))}
           </select>
 
@@ -824,7 +855,7 @@ export default function Dashboard() {
           )}
 
           <button
-            onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); setSpendingFilter(''); setCurrencyFilter(''); }}
+            onClick={() => { setSearchLocal(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setShowApprovedByMe(false); setSpendingFilter(''); setCurrencyFilter(''); setDepartmentFilter(''); }}
             className="px-3 py-2.5 rounded-xl text-sm text-slate-500 hover:text-slate-800 hover:bg-white/50 transition-all"
           >
             Reset

@@ -99,13 +99,18 @@ export default function AdminApprovers() {
       (a.email && a.email.toLowerCase().includes(q));
   });
 
+  const totalApprovers = approvers.length;
+  const deptCount = new Set(approvers.map(a => a.department).filter(Boolean)).size;
+  const adminApprovers = approvers.filter(a => a.is_admin).length;
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Approvers Management</h1>
-          <p className="text-sm text-slate-600">
-            Maintain the official list of authorized approvers for IOU and Expense approval chains.
+          <p className="text-sm text-slate-500 mt-1">
+            Maintain authorized approvers who can approve IOU and expense reconciliation chains.
           </p>
         </div>
         <button
@@ -115,87 +120,160 @@ export default function AdminApprovers() {
             setSearchResults([]);
             setShowAddModal(true);
           }}
-          className="px-4 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 shadow-sm transition flex items-center gap-2 self-start sm:self-auto"
+          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 self-start sm:self-auto"
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          Add Approver
+          + Add Approver
         </button>
       </div>
 
+      {/* Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Total Approvers</span>
+            <div className="p-1.5 rounded-lg bg-white/10">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>
+            </div>
+          </div>
+          <div className="text-3xl font-extrabold">{totalApprovers}</div>
+          <div className="text-xs text-slate-400 mt-1">Configured for approval chains</div>
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 p-5 shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-indigo-100 uppercase tracking-wider">Covered Departments</span>
+            <div className="p-1.5 rounded-lg bg-white/15">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            </div>
+          </div>
+          <div className="text-3xl font-extrabold">{deptCount}</div>
+          <div className="text-xs text-indigo-100 mt-1">Distinct departments represented</div>
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-800 p-5 shadow-lg text-white">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-purple-100 uppercase tracking-wider">Admin Approvers</span>
+            <div className="p-1.5 rounded-lg bg-white/15">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+          </div>
+          <div className="text-3xl font-extrabold">{adminApprovers}</div>
+          <div className="text-xs text-purple-100 mt-1">With full admin privileges</div>
+        </div>
+      </div>
+
+      {/* Filter Card */}
       <Card>
-        {/* Filter / Search Bar */}
-        <div className="mb-4">
+        <div className="relative max-w-md">
           <input
             type="text"
             placeholder="Search by name, username, department, or email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full max-w-md px-4 py-2 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white"
           />
+          <svg
+            className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <circle cx="11" cy="11" r="8" strokeWidth="2" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
+          </svg>
         </div>
+      </Card>
 
-        {/* Approvers Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider bg-slate-50">
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Department</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Admin</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                    Loading approvers list...
-                  </td>
+      {/* Approvers Table */}
+      <Card>
+        {loading ? (
+          <div className="space-y-3 py-4">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="h-14 bg-slate-50 rounded-xl animate-pulse" />
+            ))}
+          </div>
+        ) : filteredApprovers.length === 0 ? (
+          <div className="text-center py-12 text-slate-400">
+            <div className="w-12 h-12 mx-auto mb-3 text-slate-300 flex items-center justify-center">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/>
+              </svg>
+            </div>
+            <p className="text-base font-semibold text-slate-600">No matching approvers found</p>
+            <p className="text-sm mt-1">
+              {search ? 'Try adjusting your search criteria.' : 'Click "+ Add Approver" to add users to the list.'}
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead>
+                <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-3">User</th>
+                  <th className="py-3 px-3">Department</th>
+                  <th className="py-3 px-3 text-center">Role</th>
+                  <th className="py-3 px-3 text-center">Admin</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
-              ) : filteredApprovers.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
-                    {search ? 'No matching approvers found.' : 'No managed approvers configured yet. Click "Add Approver" to add users to the list.'}
-                  </td>
-                </tr>
-              ) : (
-                filteredApprovers.map(a => (
-                  <tr key={a.id} className="hover:bg-slate-50/80 transition">
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-slate-800">{a.display_name || a.username}</div>
-                      <div className="text-xs text-slate-500">{a.email || a.username}</div>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{a.department || '-'}</td>
-                    <td className="px-4 py-3">
-                      <span className="capitalize px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs font-medium">
-                        {a.role || 'employee'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {a.is_admin ? (
-                        <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-700">Admin</span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleRemoveApprover(a.id, a.display_name || a.username)}
-                        disabled={removingId === a.id}
-                        className="px-3 py-1.5 rounded text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 transition disabled:opacity-50"
-                      >
-                        {removingId === a.id ? 'Removing...' : 'Remove'}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filteredApprovers.map(a => {
+                  const initials = (a.display_name || a.username || 'A')
+                    .split(' ')
+                    .map(n => n[0])
+                    .slice(0, 2)
+                    .join('')
+                    .toUpperCase();
+
+                  return (
+                    <tr key={a.id} className="hover:bg-slate-50/60 transition-colors">
+                      <td className="py-3.5 px-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                            {initials}
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-800">{a.display_name || a.username}</div>
+                            <div className="text-xs text-slate-400">{a.email || a.username}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-3 text-slate-600 font-medium">
+                        {a.department || <span className="text-slate-300 text-xs">-</span>}
+                      </td>
+                      <td className="py-3.5 px-3 text-center">
+                        <span className="capitalize px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold">
+                          {a.role || 'employee'}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 text-center">
+                        {a.is_admin ? (
+                          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+                            Admin
+                          </span>
+                        ) : (
+                          <span className="text-slate-300 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-3 text-right">
+                        <button
+                          onClick={() => handleRemoveApprover(a.id, a.display_name || a.username)}
+                          disabled={removingId === a.id}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
+                        >
+                          {removingId === a.id ? 'Removing...' : 'Remove'}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       {/* Add Approver Modal */}

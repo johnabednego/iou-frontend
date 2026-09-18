@@ -43,8 +43,11 @@ export const addUserByEmail = (data) => api.post('/users/add-by-email', data);
 
 // Departments
 export const getDepartments = (params) => api.get('/departments', { params });
-export const updateDepartment = (id, data) => api.put(`/departments/${id}`, data);
+export const getDepartment = (id) => api.get(`/departments/${id}`);
 export const createDepartment = (data) => api.post('/departments', data);
+export const updateDepartment = (id, data) => api.put(`/departments/${id}`, data);
+export const deleteDepartment = (id) => api.delete(`/departments/${id}`);
+export const mergeDepartments = (data) => api.post('/departments/merge', data);
 
 // Approvals
 export const getMyApprovals = () => api.get('/approvals/mine');
@@ -91,4 +94,4 @@ export const checkFunds = (currency, amount) => api.get(`/funds/check/${currency
 export const getFundTransactions = (params) => api.get('/funds/transactions', { params });
 
 // Analytics
-export const getDashboardAnalytics = () => api.get('/analytics/dashboard');
+export const getDashboardAnalytics = (params) => api.get('/analytics/dashboard', { params });

@@ -552,7 +552,16 @@ export default function IOUDetail() {
 
       {/* Cashier: Assign Approvers (shown for PENDING_HOD_ASSIGNMENT + PENDING) */}
       {isCashier && ['PENDING_HOD_ASSIGNMENT', 'PENDING'].includes(status) && (
-        <AssignApproversPanel iouId={id} requesterId={iou.requester_id} existingApprovals={approvals} approverNames={approverNames} onAssigned={load} iouStatus={status} onStatusChanged={load} />
+        <AssignApproversPanel
+          iouId={id}
+          requesterId={iou.requester_id}
+          requesterDepartment={iou.department || (iou.requester && iou.requester.department)}
+          existingApprovals={approvals}
+          approverNames={approverNames}
+          onAssigned={load}
+          iouStatus={status}
+          onStatusChanged={load}
+        />
       )}
 
       {/* Cashier: Confirm Approval - when all approvals are APPROVED */}
@@ -689,7 +698,7 @@ function InlineApprovalActions({ approvalId, iouId, onDecided, isExpense = false
 
 
 /* ── Assign Approvers Panel - with validation + cashier reject/return ── */
-function AssignApproversPanel({ iouId, requesterId, existingApprovals, approverNames, onAssigned, iouStatus, onStatusChanged }) {
+function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existingApprovals, approverNames, onAssigned, iouStatus, onStatusChanged }) {
   const occupiedApprovals = (existingApprovals || []).filter(a => a.approval_type === 'iou');
   const startStep = occupiedApprovals.length + 1;
 
@@ -836,12 +845,30 @@ function AssignApproversPanel({ iouId, requesterId, existingApprovals, approverN
           {rows.map((r, idx) => {
             const isStep1 = r.step_order === 1 && occupiedApprovals.length === 0;
             const pool = isStep1 ? hodUsers : managedApprovers;
-            const options = pool.filter(u => u.id !== requesterId && (u.id === r.approver_id || !selectedIds.has(u.id)));
+            let options = pool.filter(u => u.id !== requesterId && (u.id === r.approver_id || !selectedIds.has(u.id)));
+
+            if (isStep1 && requesterDepartment) {
+              const reqDept = requesterDepartment.trim().toLowerCase();
+              options = [...options].sort((a, b) => {
+                const aMatch = (a.department || '').trim().toLowerCase() === reqDept;
+                const bMatch = (b.department || '').trim().toLowerCase() === reqDept;
+                if (aMatch && !bMatch) return -1;
+                if (!aMatch && bMatch) return 1;
+                return (a.display_name || a.username || '').localeCompare(b.display_name || b.username || '');
+              });
+            }
 
             return (
               <div key={idx} className="flex items-center gap-2 relative">
                 <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm font-bold flex-shrink-0">{r.step_order}</div>
                 <div className="flex-1">
+                  {isStep1 && requesterDepartment && (
+                    <div className="mb-1 text-[11px] text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1">
+                      <span>Requester Dept: <strong>{requesterDepartment}</strong></span>
+                      <span className="text-slate-400">|</span>
+                      <span>HODs for this department are marked with ★</span>
+                    </div>
+                  )}
                   <select
                     value={r.approver_id || ''}
                     disabled={loadingUsers}
@@ -861,11 +888,14 @@ function AssignApproversPanel({ iouId, requesterId, existingApprovals, approverN
                     <option value="">
                       {loadingUsers ? 'Loading approvers...' : (isStep1 ? '-- Select Head of Department --' : '-- Select Approver --')}
                     </option>
-                    {options.map(u => (
-                      <option key={u.id} value={u.id}>
-                        {u.display_name || u.username} {u.department ? `(${u.department})` : ''}
-                      </option>
-                    ))}
+                    {options.map(u => {
+                      const isMatch = isStep1 && requesterDepartment && (u.department || '').trim().toLowerCase() === requesterDepartment.trim().toLowerCase();
+                      return (
+                        <option key={u.id} value={u.id}>
+                          {isMatch ? '★ ' : ''}{u.display_name || u.username} {u.department ? `(${u.department})` : ''} {isMatch ? '— Department HOD' : ''}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 {rows.length > 1 && (

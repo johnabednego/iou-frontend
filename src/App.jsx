@@ -13,6 +13,7 @@ import AuditLogs from './pages/AuditLogs';
 import RedeemedRequests from './pages/RedeemedRequests';
 import Settings from './pages/Settings';
 import FundManagement from './pages/FundManagement';
+import AdminDepartments from './pages/AdminDepartments';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleProtected from './components/RoleProtected';
 
@@ -49,6 +50,12 @@ export default function App(){
         <Route path="admin/users" element={
           <RoleProtected roles={['admin', 'cashier']}>
             <AdminUsers />
+          </RoleProtected>
+        } />
+
+        <Route path="admin/departments" element={
+          <RoleProtected roles={['admin', 'cashier']}>
+            <AdminDepartments />
           </RoleProtected>
         } />
 

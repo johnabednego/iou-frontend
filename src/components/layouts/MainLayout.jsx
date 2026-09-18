@@ -62,12 +62,13 @@ export default function MainLayout() {
 
       <nav className="space-y-2" aria-label="Main navigation">
         <NavItem to="/" label="Dashboard" isActive={isActivePath('/')} onClick={closeSidebar} />
-        <NavItem to="/ious" label="My Requests" isActive={isActivePath('/ious')} onClick={closeSidebar} />
+        <NavItem to="/ious" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
         <NavItem to="/ious/create" label="Request IOU" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
         <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
         <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
         <NavItem to="/fund-management" label="Fund Management" show={user?.is_admin || user?.role === 'cashier'} isActive={isActivePath('/fund-management')} onClick={closeSidebar} />
         {/* admin & cashier links */}
+        <NavItem to="/admin/departments" label="Departments" show={user?.is_admin || user?.role === 'cashier'} isActive={isActivePath('/admin/departments')} onClick={closeSidebar} />
         <NavItem to="/admin/approvers" label="Approvers" show={user?.is_admin} isActive={isActivePath('/admin/approvers')} onClick={closeSidebar} />
         <NavItem to="/admin/users" label="Users" show={user?.is_admin} isActive={isActivePath('/admin/users')} onClick={closeSidebar} />
         <NavItem to="/admin/audit-logs" label="Audit Logs" show={user?.is_admin} isActive={isActivePath('/admin/audit-logs')} onClick={closeSidebar} />
