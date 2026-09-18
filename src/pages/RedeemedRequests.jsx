@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { listIOUs, exportIOUs, getDateLimit, getCurrencies } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { Link } from 'react-router-dom';
@@ -140,7 +140,68 @@ export default function RedeemedRequests() {
 
   const totalCount = ious.length;
   const withVoucherCount = ious.filter(i => i.ifs_voucher_number).length;
-  const totalAmountGHS = ious.reduce((sum, i) => sum + (Number(i.estimated_amount) || 0), 0);
+
+  // Multi-currency overall redeemed volume calculation
+  const redeemedAmountByCurrency = useMemo(() => {
+    const map = {};
+    for (const iou of ious) {
+      const cur = (iou.currency || 'GHS').toUpperCase().trim();
+      const amt = Number(iou.estimated_amount) || 0;
+      map[cur] = (map[cur] || 0) + amt;
+    }
+    return map;
+  }, [ious]);
+
+  const currencyEntries = useMemo(() => {
+    const codeSet = new Set();
+    if (currencies && currencies.length > 0) {
+      currencies.forEach(c => codeSet.add(c.code));
+    } else {
+      ['GHS', 'USD', 'EUR', 'GBP'].forEach(c => codeSet.add(c));
+    }
+    if (redeemedAmountByCurrency) {
+      Object.keys(redeemedAmountByCurrency).forEach(c => codeSet.add(c));
+    }
+
+    const order = ['GHS', 'USD', 'EUR', 'GBP'];
+    const entries = [];
+
+    for (const code of codeSet) {
+      const currObj = currencies.find(c => c.code === code);
+      const isActive = currObj ? !!currObj.is_active : (currencies.length === 0);
+      const amt = (redeemedAmountByCurrency || {})[code] || 0;
+
+      // Rule: if deactivated and redeemed amount is 0, hide it
+      if (!isActive && amt <= 0) {
+        continue;
+      }
+
+      entries.push([code, amt]);
+    }
+
+    entries.sort(([a], [b]) => {
+      const idxA = order.indexOf(a);
+      const idxB = order.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+
+    return entries;
+  }, [currencies, redeemedAmountByCurrency]);
+
+  const filteredCurrencyEntries = useMemo(() => {
+    if (!currencyFilter) return currencyEntries;
+    return currencyEntries.filter(([code]) => code === currencyFilter);
+  }, [currencyEntries, currencyFilter]);
+
+  const volumeLabel = useMemo(() => {
+    if (startDate && endDate) return `Overall (${shortDate(startDate)} - ${shortDate(endDate)})`;
+    if (startDate) return `Overall (from ${shortDate(startDate)})`;
+    if (endDate) return `Overall (up to ${shortDate(endDate)})`;
+    return 'Overall redeemed volume';
+  }, [startDate, endDate]);
 
   return (
     <div className="space-y-6">
@@ -163,7 +224,7 @@ export default function RedeemedRequests() {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
                 <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
+                <line x1="12" y1="1" x2="12" y2="3" />
               </svg>
               {exporting ? 'Exporting...' : 'Export to Excel'}
             </button>
@@ -173,37 +234,54 @@ export default function RedeemedRequests() {
 
       {/* Summary KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Total Redeemed</span>
-            <div className="p-1.5 rounded-lg bg-white/10">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg text-white flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Total Redeemed</span>
+              <div className="p-1.5 rounded-lg bg-white/10">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
             </div>
+            <div className="text-3xl font-extrabold">{totalCount}</div>
           </div>
-          <div className="text-3xl font-extrabold">{totalCount}</div>
-          <div className="text-xs text-slate-400 mt-1">Fully closed & settled</div>
+          <div className="text-xs text-slate-400 mt-2">Fully closed & settled</div>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">With IFS Voucher #</span>
-            <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 shadow-lg text-white flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">With IFS Voucher #</span>
+              <div className="p-1.5 rounded-lg bg-white/15">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              </div>
             </div>
+            <div className="text-3xl font-extrabold">{withVoucherCount}</div>
           </div>
-          <div className="text-3xl font-extrabold">{withVoucherCount}</div>
-          <div className="text-xs text-emerald-100 mt-1">Directly linked to ERP voucher</div>
+          <div className="text-xs text-emerald-100 mt-2">Directly linked to ERP voucher</div>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-indigo-100 uppercase tracking-wider">Redeemed Volume</span>
-            <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 p-5 shadow-lg text-white flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-indigo-100 uppercase tracking-wider">Redeemed Volume</span>
+              <div className="p-1.5 rounded-lg bg-white/15">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+            </div>
+            <div className="space-y-1.5 max-h-[85px] overflow-y-auto pr-1">
+              {filteredCurrencyEntries.length === 0 ? (
+                <div className="text-sm text-indigo-100/80 italic py-1">No redeemed volume</div>
+              ) : (
+                filteredCurrencyEntries.map(([cur, amt]) => (
+                  <div key={cur} className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-indigo-200 bg-white/10 px-1.5 py-0.5 rounded">{cur}</span>
+                    <span className="text-sm font-bold text-white">{formatCurrency(amt, cur)}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
-          <div className="text-3xl font-extrabold">{formatCurrency(totalAmountGHS, 'GHS')}</div>
-          <div className="text-xs text-indigo-100 mt-1">Across current results</div>
+          <div className="text-xs text-indigo-100 mt-2">{volumeLabel}</div>
         </div>
       </div>
 
