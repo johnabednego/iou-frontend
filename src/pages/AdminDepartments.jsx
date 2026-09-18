@@ -173,6 +173,8 @@ export default function AdminDepartments() {
     setMerging(true);
     try {
       const res = await mergeDepartments({
+        source_id: mergeSourceId,
+        target_id: mergeTargetId,
         source_department_id: mergeSourceId,
         target_department_id: mergeTargetId,
         keep_alias: mergeKeepAlias
