@@ -1,4 +1,4 @@
-# Meridian Port Services (MPS) — IOU & Petty Cash Management System
+# IOU & Petty Cash Management System
 
 > **A comprehensive, enterprise-grade web application for managing end-to-end petty cash requests, cash advances (IOUs), tiered multi-level approvals, multi-currency fund float disbursements, receipt settlements, and IFS ERP voucher reconciliation.**
 
