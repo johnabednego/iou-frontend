@@ -313,13 +313,13 @@ export default function AdminUsers() {
                   return (
                     <tr key={u.id} className="hover:bg-slate-50/60 transition-colors">
                       <td className="py-3 px-3">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
                             {initials}
                           </div>
-                          <div>
-                            <div className="font-bold text-slate-800">{u.display_name || '-'}</div>
-                            <div className="text-xs text-slate-400 sm:hidden">{u.username}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-800 truncate max-w-[200px]" title={u.display_name || '-'}>{u.display_name || '-'}</div>
+                            <div className="text-xs text-slate-400 sm:hidden truncate">{u.username}</div>
                           </div>
                         </div>
                       </td>

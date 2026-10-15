@@ -392,11 +392,11 @@ export default function IOUList() {
                         </Link>
                         <div className="text-xs text-slate-400 line-clamp-1 max-w-[220px]">{iou.purpose}</div>
                       </td>
-                      <td className="py-3.5 px-3 font-medium text-slate-700">
+                      <td className="py-3.5 px-3 font-medium text-slate-700 max-w-[180px] truncate" title={iou.requester?.display_name || iou.requester?.username || '-'}>
                         {iou.requester?.display_name || iou.requester?.username || '-'}
                       </td>
-                      <td className="py-3.5 px-3 text-slate-600">{iou.department || '-'}</td>
-                      <td className="py-3.5 px-3 text-right font-bold text-slate-800">{formatCurrency(iou.estimated_amount, iou.currency)}</td>
+                      <td className="py-3.5 px-3 text-slate-600 max-w-[160px] truncate" title={iou.department || '-'}>{iou.department || '-'}</td>
+                      <td className="py-3.5 px-3 text-right font-bold text-slate-800 whitespace-nowrap">{formatCurrency(iou.estimated_amount, iou.currency)}</td>
                       <td className="py-3.5 px-3 text-center"><StatusBadge status={iou.status} /></td>
                       <td className="py-3.5 px-3 text-center">
                         {spendingLabel ? (

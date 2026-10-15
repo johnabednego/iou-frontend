@@ -943,8 +943,8 @@ export default function Dashboard() {
                             <Link to={`/ious/${i.id}`} className="font-semibold text-slate-800 hover:text-emerald-600 transition-colors">{i.request_number}</Link>
                             <div className="text-xs text-slate-400 line-clamp-1">{i.purpose}</div>
                           </td>
-                          <td className="py-3 text-slate-600">{ (i.requester && i.requester.display_name) || i.requester_name || i.requester_id }</td>
-                          <td className="py-3 font-medium text-slate-700">{ formatCurrency(i.estimated_amount, i.currency) }</td>
+                          <td className="py-3 text-slate-600 max-w-[180px] truncate" title={(i.requester && i.requester.display_name) || i.requester_name || i.requester_id || '-'}>{ (i.requester && i.requester.display_name) || i.requester_name || i.requester_id }</td>
+                          <td className="py-3 font-medium text-slate-700 whitespace-nowrap">{ formatCurrency(i.estimated_amount, i.currency) }</td>
                           <td className="py-3"><StatusBadge status={i.status} /></td>
                           <td className="py-3">
                             {spendingLabel ? (

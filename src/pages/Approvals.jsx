@@ -180,22 +180,28 @@ export default function Approvals() {
 }
 
 function ApprovalCard({ a, openModal, isExpense = false }) {
-  const initials = (a.iou?.requester?.display_name || a.iou?.requester?.username || 'U')
+  const requesterName = a.iou?.requester?.display_name || a.iou?.requester?.username || '-';
+  const initials = requesterName
     .split(' ')
+    .filter(Boolean)
     .map(n => n[0])
     .slice(0, 2)
     .join('')
-    .toUpperCase();
+    .toUpperCase() || 'U';
+
+  const amountDisplay = isExpense && a.expense?.actual_amount
+    ? fmt(a.expense.actual_amount, a.iou?.currency)
+    : fmt(a.iou?.estimated_amount, a.iou?.currency);
 
   return (
     <Card>
       <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <Link to={`/ious/${a.iou_id}`} className="text-base font-bold text-slate-800 hover:text-emerald-600 transition-colors">
               {a.iou?.request_number || a.iou_id}
             </Link>
-            <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 font-mono text-slate-600 font-medium">
+            <span className="text-xs px-2.5 py-0.5 rounded-md bg-slate-100 font-mono text-slate-600 font-medium">
               Step {a.step_order}
             </span>
             {isExpense ? (
@@ -209,27 +215,37 @@ function ApprovalCard({ a, openModal, isExpense = false }) {
             )}
           </div>
           {a.iou && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-slate-600 mt-2">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-[10px]">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs text-slate-600 mt-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-600 text-white font-bold flex items-center justify-center text-[10px] shrink-0 shadow-sm">
                   {initials}
                 </div>
-                <div>
-                  <div className="text-[10px] text-slate-400">Requester</div>
-                  <div className="font-semibold text-slate-700 truncate">{a.iou.requester?.display_name || '-'}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Requester</div>
+                  <div className="font-bold text-slate-800 truncate" title={requesterName}>
+                    {requesterName}
+                  </div>
                 </div>
               </div>
-              <div>
-                <div className="text-[10px] text-slate-400">Amount</div>
-                <div className="font-bold text-emerald-700">{fmt(a.iou.estimated_amount, a.iou.currency)}</div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                  {isExpense ? 'Actual Amount' : 'Amount'}
+                </div>
+                <div className="font-extrabold text-emerald-700 whitespace-nowrap text-sm">
+                  {amountDisplay}
+                </div>
               </div>
-              <div>
-                <div className="text-[10px] text-slate-400">Department</div>
-                <div className="font-semibold text-slate-700 truncate">{a.iou.department || '-'}</div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Department</div>
+                <div className="font-semibold text-slate-700 truncate" title={a.iou.department || '-'}>
+                  {a.iou.department || '-'}
+                </div>
               </div>
-              <div>
-                <div className="text-[10px] text-slate-400">Purpose</div>
-                <div className="font-medium text-slate-600 line-clamp-1">{a.iou.purpose || '-'}</div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Purpose</div>
+                <div className="font-medium text-slate-600 truncate" title={a.iou.purpose || '-'}>
+                  {a.iou.purpose || '-'}
+                </div>
               </div>
             </div>
           )}

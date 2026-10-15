@@ -383,8 +383,8 @@ export default function AdminDepartments() {
                   const hodList = Array.isArray(dept.hods) ? dept.hods : [];
                   return (
                     <tr key={dept.id} className="hover:bg-slate-50/60 transition-colors">
-                      <td className="py-3.5 px-3">
-                        <div className="font-bold text-slate-800">{dept.name}</div>
+                      <td className="py-3.5 px-3 max-w-[240px]">
+                        <div className="font-bold text-slate-800 truncate" title={dept.name}>{dept.name}</div>
                         {dept.description && (
                           <div className="text-xs text-slate-400 line-clamp-1 mt-0.5">{dept.description}</div>
                         )}

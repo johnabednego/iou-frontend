@@ -454,11 +454,11 @@ export default function RedeemedRequests() {
                         <span className="text-slate-400 font-mono text-xs">N/A</span>
                       )}
                     </td>
-                    <td className="py-3 px-3 text-slate-600">
+                    <td className="py-3 px-3 text-slate-600 max-w-[180px] truncate" title={iou.requester?.display_name || iou.requester?.username || '-'}>
                       {iou.requester?.display_name || iou.requester?.username || '-'}
                     </td>
-                    <td className="py-3 px-3 text-slate-600">{iou.department || '-'}</td>
-                    <td className="py-3 px-3 text-right font-semibold text-slate-800">
+                    <td className="py-3 px-3 text-slate-600 max-w-[160px] truncate" title={iou.department || '-'}>{iou.department || '-'}</td>
+                    <td className="py-3 px-3 text-right font-semibold text-slate-800 whitespace-nowrap">
                       {formatCurrency(iou.estimated_amount, iou.currency)}
                     </td>
                     <td className="py-3 px-3 text-center">

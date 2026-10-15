@@ -1249,7 +1249,13 @@ function AssignExpenseApproversPanel({ iouId, requesterId, existingApprovals, ap
 
   async function handleAssign() {
     const valid = rows.filter(r => r.approver_id);
-    if (valid.length === 0) { toastify.error('Please select at least one approver'); return; }
+    if (valid.length === 0) { toastify.error('Please select at least two approvers'); return; }
+
+    const totalApprovers = occupiedApprovals.length + valid.length;
+    if (totalApprovers < 2) {
+      toastify.error('Expense approval requires a minimum of two approvers. Please add at least one more.');
+      return;
+    }
 
     const allApprovers = [
       ...occupiedApprovals.map(a => ({ approver_id: a.approver_id, step_order: a.step_order })),
@@ -1340,9 +1346,12 @@ function AssignExpenseApproversPanel({ iouId, requesterId, existingApprovals, ap
       </div>
       <div className="flex gap-2 mt-4">
         <button onClick={addRow} className="px-3 py-2 bg-white rounded-lg border border-slate-200 text-sm hover:bg-slate-50">+ Add Approver</button>
-        <Button onClick={handleAssign} disabled={submitting || rows.every(r => !r.approver_id)}>
+        <Button onClick={handleAssign} disabled={submitting || rows.every(r => !r.approver_id) || (occupiedApprovals.length + rows.filter(r => r.approver_id).length) < 2}>
           {submitting ? 'Assigning...' : 'Assign Authorizer Approvers'}
         </Button>
+        {(occupiedApprovals.length + rows.filter(r => r.approver_id).length) < 2 && (
+          <p className="text-xs text-amber-600 mt-1">⚠ Minimum of 2 approvers required for expense approval</p>
+        )}
       </div>
     </Card>
   );

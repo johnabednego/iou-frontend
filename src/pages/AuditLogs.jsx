@@ -195,12 +195,12 @@ export default function AuditLogs() {
                           {l.action}
                         </span>
                       </td>
-                      <td className="py-3 px-3 font-semibold text-slate-800">
+                      <td className="py-3 px-3 font-semibold text-slate-800 max-w-[180px] truncate" title={l.actor?.display_name || l.actor_name || '-'}>
                         {l.actor?.display_name || l.actor_name || '-'}
                       </td>
                       <td className="py-3 px-3 text-slate-600 font-medium">{l.entity || '-'}</td>
                       <td className="py-3 px-3">{entityLink(l)}</td>
-                      <td className="py-3 px-3 text-right text-slate-500 text-xs">{shortDate(l.created_at)}</td>
+                      <td className="py-3 px-3 text-right text-slate-500 text-xs whitespace-nowrap">{shortDate(l.created_at)}</td>
                     </tr>
                   ))}
                 </tbody>
