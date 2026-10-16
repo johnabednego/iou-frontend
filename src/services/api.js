@@ -10,9 +10,16 @@ const api = axios.create({
   }
 });
 
-// Response interceptor: redirect on 401
+// Response interceptor: redirect on 401 (skip during SSO handshake)
 api.interceptors.response.use(r => r, (err) => {
-  if (err?.response?.status === 401 && !window.location.pathname.includes('/login')) {
+  const isSsoInProgress = window.__iou_sso_in_progress?.current;
+  const isSsoEndpoint = err?.config?.url?.includes('/sso-login');
+  if (
+    err?.response?.status === 401 &&
+    !window.location.pathname.includes('/login') &&
+    !isSsoInProgress &&
+    !isSsoEndpoint
+  ) {
     window.location.href = '/login';
   }
   return Promise.reject(err);
