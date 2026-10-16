@@ -172,7 +172,7 @@ export default function IOUCreate() {
 
             <div>
               <label className="block text-sm text-slate-700 mb-1">
-                Currency *
+                Currency <span className="text-red-500">*</span>
               </label>
               <select
                 value={currency}

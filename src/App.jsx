@@ -1,4 +1,5 @@
 import React from 'react';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import MainLayout from './components/layouts/MainLayout';
 import Login from './pages/Login';
@@ -19,6 +20,7 @@ import RoleProtected from './components/RoleProtected';
 
 export default function App(){
   return (
+    <ErrorBoundary>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={
@@ -81,5 +83,6 @@ export default function App(){
 
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
+    </ErrorBoundary>
   );
 }

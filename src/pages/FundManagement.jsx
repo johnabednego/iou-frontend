@@ -14,7 +14,11 @@ const CURRENCY_COLORS = { GHS: '#065f46', USD: '#1d4ed8', EUR: '#7c3aed', GBP: '
 function formatCurrency(n, currency = 'GHS') {
   if (n == null) return `${currency} 0.00`;
   const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  try {
+    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  } catch {
+    return `${currency} ${Number(n).toFixed(2)}`;
+  }
 }
 
 const TX_TYPE_BADGES = {
@@ -106,11 +110,19 @@ export default function FundManagement() {
       setError('Currency code and name are required');
       return;
     }
+    if (!/^[A-Za-z]{3}$/.test(newCurCode.trim())) {
+      setError('Currency code must be exactly 3 letters (e.g. GHS, USD, EUR)');
+      return;
+    }
+    if (!newCurSymbol.trim()) {
+      setError('Currency symbol is required (e.g. $, €, ₵, £)');
+      return;
+    }
     setAddingCurrency(true);
     setError('');
     setSuccess('');
     try {
-      await addCurrency({ code: newCurCode.trim(), name: newCurName.trim(), symbol: newCurSymbol.trim() || null });
+      await addCurrency({ code: newCurCode.trim(), name: newCurName.trim(), symbol: newCurSymbol.trim() });
       setSuccess(`Currency ${newCurCode.trim().toUpperCase()} added successfully`);
       setNewCurCode('');
       setNewCurName('');
@@ -229,7 +241,7 @@ export default function FundManagement() {
         <div className="text-sm font-semibold text-slate-600 mb-4">Update Fund Balance</div>
         <form onSubmit={handleUpdateBalance} className="grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Currency</label>
+            <label className="block text-xs text-slate-500 mb-1">Currency <span className="text-red-500">*</span></label>
             <select
               value={selectedCurrency}
               onChange={e => setSelectedCurrency(e.target.value)}
@@ -241,7 +253,7 @@ export default function FundManagement() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Action</label>
+            <label className="block text-xs text-slate-500 mb-1">Action <span className="text-red-500">*</span></label>
             <select
               value={action}
               onChange={e => setAction(e.target.value)}
@@ -253,7 +265,7 @@ export default function FundManagement() {
             </select>
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Amount</label>
+            <label className="block text-xs text-slate-500 mb-1">Amount <span className="text-red-500">*</span></label>
             <input
               type="number"
               min="0"
@@ -292,18 +304,18 @@ export default function FundManagement() {
             <div className="text-xs text-slate-500 mb-2 font-medium">Add New Currency</div>
             <form onSubmit={handleAddCurrency} className="flex flex-wrap gap-3 items-end">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Code</label>
+                <label className="block text-xs text-slate-400 mb-1">Code <span className="text-red-500">*</span></label>
                 <input
                   value={newCurCode}
                   onChange={e => setNewCurCode(e.target.value.toUpperCase())}
                   placeholder="JPY"
-                  maxLength={8}
+                  maxLength={3}
                   className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-20"
                   required
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Name</label>
+                <label className="block text-xs text-slate-400 mb-1">Name <span className="text-red-500">*</span></label>
                 <input
                   value={newCurName}
                   onChange={e => setNewCurName(e.target.value)}
@@ -313,13 +325,14 @@ export default function FundManagement() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Symbol</label>
+                <label className="block text-xs text-slate-400 mb-1">Symbol <span className="text-red-500">*</span></label>
                 <input
                   value={newCurSymbol}
                   onChange={e => setNewCurSymbol(e.target.value)}
                   placeholder="¥"
                   maxLength={8}
                   className="px-3 py-2 rounded-lg border border-slate-200 text-sm w-16"
+                  required
                 />
               </div>
               <Button type="submit" disabled={addingCurrency} variant="secondary">

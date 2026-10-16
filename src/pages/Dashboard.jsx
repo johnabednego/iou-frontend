@@ -65,7 +65,11 @@ function Donut({ value = 0, total = 1, size = 56, strokeWidth = 8, color = '#4f4
 function formatCurrency(n, currency = 'GHS') {
   if (n == null) return `${currency} 0.00`;
   const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  try {
+    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  } catch {
+    return `${currency} ${Number(n).toFixed(2)}`;
+  }
 }
 
 const CURRENCY_SYMBOLS = { GHS: 'GH₵', USD: '$', EUR: '€', GBP: '£' };
@@ -188,14 +192,14 @@ export default function Dashboard() {
         setAnalytics(aRes.data?.data || null);
         setCurrencies(cRes.data?.data || []);
         setDepartmentList(dRes.data?.data || []);
-      } catch (_) {}
+      } catch (_) { }
 
       // Fund balances (privileged only)
       if (canSeeAll) {
         try {
           const fRes = await getFundBalances();
           setFundBalances(fRes.data?.data || []);
-        } catch (_) {}
+        } catch (_) { }
       }
     })();
   }, [canSeeAll, departmentFilter]);
@@ -282,7 +286,7 @@ export default function Dashboard() {
     // live refresh every 30s
     if (reloadIntervalRef.current) clearInterval(reloadIntervalRef.current);
     reloadIntervalRef.current = setInterval(() => {
-      load().catch(() => {});
+      load().catch(() => { });
     }, 30000);
 
     return () => {
@@ -408,7 +412,7 @@ export default function Dashboard() {
           const text = await err.response.data.text();
           const json = JSON.parse(text);
           msg = json.message || msg;
-        } catch (_) {}
+        } catch (_) { }
       }
       if (msg.toLowerCase().includes('no ious found')) {
         setExportMsg(msg);
@@ -512,10 +516,9 @@ export default function Dashboard() {
           </div>
           <Link
             to="/ious/create"
-            className="px-5 py-2.5 rounded-xl bg-white/15 backdrop-blur-sm border border-white/25 text-white text-sm font-semibold hover:bg-white/25 transition-all shadow-sm flex items-center gap-2"
+            className="px-5 py-2.5 rounded-xl bg-white/15 backdrop-blur-sm border border-white/25 text-white hover:text-white hover:text-opacity-50  text-sm font-semibold hover:bg-white/25 transition-all shadow-sm flex items-center gap-2"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New IOU Request
+            + New Request
           </Link>
         </div>
       </section>
@@ -546,7 +549,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-3">
               <div className="p-2 rounded-lg bg-white/15">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
                 </svg>
               </div>
               <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">Pending</span>
@@ -566,7 +569,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-3">
               <div className="p-2 rounded-lg bg-white/15">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </div>
               <span className="text-xs font-medium text-sky-100 uppercase tracking-wider">
@@ -588,7 +591,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mb-2">
               <div className="p-2 rounded-lg bg-white/15">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
+                  <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
                 </svg>
               </div>
               <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">Approved Amount</span>
@@ -618,7 +621,7 @@ export default function Dashboard() {
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-emerald-100">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#065f46" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" />
                   </svg>
                 </div>
                 <span className="text-sm font-bold text-slate-700">Available Fund Balances</span>
@@ -879,8 +882,8 @@ export default function Dashboard() {
           <div className="rounded-2xl bg-white/60 backdrop-blur-md border border-white/40 shadow-lg p-5">
             <div className="text-sm font-bold text-slate-700 mb-3">Quick Actions</div>
             <div className="flex flex-wrap gap-3">
-              <Link to="/ious/create" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-700 text-white text-sm font-semibold shadow-sm hover:shadow-md transition-all">
-                + Request IOU
+              <Link to="/ious/create" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-700 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold shadow-sm hover:shadow-md transition-all">
+                + New Request
               </Link>
               <Link to="/approvals" className="px-5 py-2.5 rounded-xl bg-white border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition-all">
                 My Approvals
@@ -943,8 +946,8 @@ export default function Dashboard() {
                             <Link to={`/ious/${i.id}`} className="font-semibold text-slate-800 hover:text-emerald-600 transition-colors">{i.request_number}</Link>
                             <div className="text-xs text-slate-400 line-clamp-1">{i.purpose}</div>
                           </td>
-                          <td className="py-3 text-slate-600 max-w-[180px] truncate" title={(i.requester && i.requester.display_name) || i.requester_name || i.requester_id || '-'}>{ (i.requester && i.requester.display_name) || i.requester_name || i.requester_id }</td>
-                          <td className="py-3 font-medium text-slate-700 whitespace-nowrap">{ formatCurrency(i.estimated_amount, i.currency) }</td>
+                          <td className="py-3 text-slate-600 max-w-[180px] truncate" title={(i.requester && i.requester.display_name) || i.requester_name || i.requester_id || '-'}>{(i.requester && i.requester.display_name) || i.requester_name || i.requester_id}</td>
+                          <td className="py-3 font-medium text-slate-700 whitespace-nowrap">{formatCurrency(i.estimated_amount, i.currency)}</td>
                           <td className="py-3"><StatusBadge status={i.status} /></td>
                           <td className="py-3">
                             {spendingLabel ? (
@@ -953,7 +956,7 @@ export default function Dashboard() {
                               <span className="text-xs text-slate-300">-</span>
                             )}
                           </td>
-                          <td className="py-3 text-right text-xs text-slate-400">{ shortDate(i.created_at || i.submitted_at || i.updated_at) }</td>
+                          <td className="py-3 text-right text-xs text-slate-400">{shortDate(i.created_at || i.submitted_at || i.updated_at)}</td>
                         </tr>
                       );
                     })}
@@ -983,7 +986,7 @@ export default function Dashboard() {
                 <div className="text-sm">No pending approvals</div>
               </div>
             ) :
-              approvals.slice(0,6).map(a => (
+              approvals.slice(0, 6).map(a => (
                 <div key={a.id} className="flex items-start justify-between p-3 rounded-xl border border-slate-100 bg-white/50 mb-2 hover:bg-white/70 transition-colors">
                   <div>
                     <div className="font-medium text-sm">IOU: <Link to={`/ious/${a.iou_id}`} className="text-emerald-600 hover:underline font-semibold">{a.iou?.request_number || a.iou_id}</Link></div>
@@ -1015,7 +1018,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {notifications.slice(0,6).map(n => (
+                {notifications.slice(0, 6).map(n => (
                   <div key={n.id} className="flex justify-between items-start gap-3 p-2 rounded-lg hover:bg-white/40 transition-colors">
                     <div className="flex gap-2">
                       <div className="w-2 h-2 rounded-full bg-blue-400 mt-1.5 shrink-0" />
@@ -1024,7 +1027,7 @@ export default function Dashboard() {
                         <div className="text-xs text-slate-400">{n.body}</div>
                       </div>
                     </div>
-                    <div className="text-xs text-slate-300 whitespace-nowrap">{ shortDate(n.created_at) }</div>
+                    <div className="text-xs text-slate-300 whitespace-nowrap">{shortDate(n.created_at)}</div>
                   </div>
                 ))}
               </div>

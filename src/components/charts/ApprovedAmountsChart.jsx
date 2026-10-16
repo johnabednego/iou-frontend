@@ -9,7 +9,11 @@ const CURRENCY_COLORS = { GHS: '#34d399', USD: '#60a5fa', EUR: '#c084fc', GBP: '
 function formatCurrency(n, currency = 'GHS') {
   if (n == null) return `${currency} 0.00`;
   const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  try {
+    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  } catch {
+    return `${currency} ${Number(n).toFixed(2)}`;
+  }
 }
 
 const TABS = [

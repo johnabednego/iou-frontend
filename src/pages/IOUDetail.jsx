@@ -40,7 +40,11 @@ function StatusBadge({ status }) {
 function formatCurrency(n, currency = 'GHS') {
   if (n == null) return `${currency} 0.00`;
   const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  try {
+    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  } catch {
+    return `${currency} ${Number(n).toFixed(2)}`;
+  }
 }
 
 function shortDate(dt) {
@@ -253,7 +257,7 @@ export default function IOUDetail() {
         {isEditing ? (
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Purpose *</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Purpose <span className="text-red-500">*</span></label>
               <textarea
                 value={editPurpose}
                 onChange={e => setEditPurpose(e.target.value)}
@@ -262,7 +266,7 @@ export default function IOUDetail() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estimated Amount ({editCurrency}) *</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estimated Amount ({editCurrency}) <span className="text-red-500">*</span></label>
               <input
                 type="number"
                 step="0.01"
@@ -272,7 +276,7 @@ export default function IOUDetail() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Currency *</label>
+              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Currency <span className="text-red-500">*</span></label>
               <select
                 value={editCurrency}
                 onChange={e => setEditCurrency(e.target.value)}
@@ -1105,7 +1109,7 @@ function ExpensePanel({ currency = 'GHS', onSubmit, loading }) {
       {error && <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">{error}</div>}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm text-slate-700 mb-1">Actual Amount ({currency}) *</label>
+          <label className="block text-sm text-slate-700 mb-1">Actual Amount ({currency}) <span className="text-red-500">*</span></label>
           <input type="number" step="0.01" value={actualAmount} onChange={e => setActualAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
         </div>
         <div>
@@ -1113,7 +1117,7 @@ function ExpensePanel({ currency = 'GHS', onSubmit, loading }) {
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
         </div>
         <div>
-          <label className="block text-sm text-slate-700 mb-1">Receipt / Supporting Documents *</label>
+          <label className="block text-sm text-slate-700 mb-1">Receipt / Supporting Documents <span className="text-red-500">*</span></label>
           <FileUploader onUploaded={(att) => setExpAttachments(s => [...s, att])} />
           {expAttachments.length > 0 && (
             <div className="mt-2 space-y-1">
@@ -1174,7 +1178,7 @@ function EditExpensePanel({ expense, expenseApprovals = [], approverNames = {}, 
       {error && <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">{error}</div>}
       <div className="space-y-4">
         <div>
-          <label className="block text-sm text-slate-700 mb-1">Actual Amount ({currency}) *</label>
+          <label className="block text-sm text-slate-700 mb-1">Actual Amount ({currency}) <span className="text-red-500">*</span></label>
           <input type="number" step="0.01" value={actualAmount} onChange={e => setActualAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
         </div>
         <div>
@@ -1182,7 +1186,7 @@ function EditExpensePanel({ expense, expenseApprovals = [], approverNames = {}, 
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
         </div>
         <div>
-          <label className="block text-sm text-slate-700 mb-1">Attachments *</label>
+          <label className="block text-sm text-slate-700 mb-1">Attachments <span className="text-red-500">*</span></label>
           {/* Show existing attachments with remove buttons */}
           {expAttachments.length > 0 && (
             <div className="mb-2 space-y-1">
@@ -1365,7 +1369,7 @@ function RejectExpensePanel({ onReject, loading }) {
     <Card title="Reject / Return Expense">
       <p className="text-sm text-slate-600 mb-3">Return this expense to the requester for corrections.</p>
       <div className="mb-3">
-        <label className="block text-sm text-slate-700 mb-1">Reason *</label>
+        <label className="block text-sm text-slate-700 mb-1">Reason <span className="text-red-500">*</span></label>
         <textarea value={reason} onChange={e => setReason(e.target.value)} rows={2} placeholder="Explain why the expense is being returned..." className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-200" />
       </div>
       <Button onClick={() => onReject({ reason })} disabled={loading || !reason.trim()} className="bg-gradient-to-r from-red-500 to-red-700">
@@ -1403,7 +1407,7 @@ function ReconcilePanel({ iou, expense, currency = 'GHS', onReconcile, loading }
         </div>
       </div>
       <div className="mb-4">
-        <label className="block text-sm text-slate-700 mb-1">IFS Voucher Number *</label>
+        <label className="block text-sm text-slate-700 mb-1">IFS Voucher Number <span className="text-red-500">*</span></label>
         <input
           type="text"
           value={ifsVoucherNumber}

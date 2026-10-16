@@ -53,7 +53,11 @@ function StatusBadge({ status }) {
 function formatCurrency(n, currency = 'GHS') {
   if (n == null) return `${currency} 0.00`;
   const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  try {
+    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
+  } catch {
+    return `${currency} ${Number(n).toFixed(2)}`;
+  }
 }
 
 function shortDate(dt) {
@@ -83,8 +87,8 @@ export default function IOUList() {
 
   // Load currencies and departments on mount
   useEffect(() => {
-    getCurrencies({ include_inactive: 'true' }).then(res => setCurrencies(res.data?.data || [])).catch(() => {});
-    getDepartments().then(res => setDepartments(res.data?.data || [])).catch(() => {});
+    getCurrencies({ include_inactive: 'true' }).then(res => setCurrencies(res.data?.data || [])).catch(() => { });
+    getDepartments().then(res => setDepartments(res.data?.data || [])).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -152,18 +156,16 @@ export default function IOUList() {
                 <button
                   type="button"
                   onClick={() => setViewAll(true)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                    viewAll ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${viewAll ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
                 >
                   {isHod ? 'Department Requests' : 'All Requests'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewAll(false)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
-                    !viewAll ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${!viewAll ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                    }`}
                 >
                   My Submissions
                 </button>
@@ -174,12 +176,9 @@ export default function IOUList() {
         </div>
         <Link
           to="/ious/create"
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 shrink-0"
+          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white hover:text-white hover:text-opacity-50 font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 shrink-0"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          + Request IOU
+          + New Request
         </Link>
       </div>
 
@@ -189,7 +188,7 @@ export default function IOUList() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Total Requests</span>
             <div className="p-1.5 rounded-lg bg-white/10">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
             </div>
           </div>
           <div className="text-3xl font-extrabold">{totalCount}</div>
@@ -200,7 +199,7 @@ export default function IOUList() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">Awaiting Action</span>
             <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
             </div>
           </div>
           <div className="text-3xl font-extrabold">{pendingCount}</div>
@@ -211,7 +210,7 @@ export default function IOUList() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-blue-100 uppercase tracking-wider">Disbursed / Active</span>
             <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
             </div>
           </div>
           <div className="text-3xl font-extrabold">{activeDisbursedCount}</div>
@@ -222,7 +221,7 @@ export default function IOUList() {
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">Settled & Redeemed</span>
             <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
             </div>
           </div>
           <div className="text-3xl font-extrabold">{redeemedCount}</div>
@@ -345,12 +344,12 @@ export default function IOUList() {
           <div className="text-center py-12 text-slate-400">
             <div className="w-12 h-12 mx-auto mb-3 text-slate-300 flex items-center justify-center">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
               </svg>
             </div>
             <p className="text-base font-semibold text-slate-600">No IOU requests found</p>
             <p className="text-sm mt-1">Try adjusting your filters or submit a new petty cash request.</p>
-            <Link to="/ious/create" className="text-emerald-600 font-semibold hover:underline text-sm mt-3 inline-block">Create new IOU &rarr;</Link>
+            <Link to="/ious/create" className="text-emerald-600 font-semibold hover:underline text-sm mt-3 inline-block">Create new request &rarr;</Link>
           </div>
         ) : (
           <div className="overflow-x-auto">
