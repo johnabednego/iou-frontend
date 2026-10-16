@@ -24,6 +24,8 @@ export function AuthProvider({ children }) {
           const res = await api.post('/auth/sso-login', { token: ssoToken });
           if (res.data && res.data.user) {
             setUser(res.data.user);
+            // Remember that this user came in via Smart Workplace SSO
+            sessionStorage.setItem('sso_origin', 'swp');
             // Clean the token from the URL to prevent leaking via browser history
             const cleanUrl = window.location.pathname;
             window.history.replaceState({}, document.title, cleanUrl);
@@ -54,6 +56,8 @@ export function AuthProvider({ children }) {
   async function login(username, password) {
     // backend LDAP login: /auth/login
     const res = await api.post('/auth/login', { username, password });
+    // Direct login — clear any SSO origin flag
+    sessionStorage.removeItem('sso_origin');
     // fetch DB user
     const me = await api.get('/users/me');
     setUser(me.data.user);
@@ -65,6 +69,20 @@ export function AuthProvider({ children }) {
       await api.get('/auth/logout');
     } catch (e) { /* ignore */ }
     setUser(null);
+
+    // If the user came in via Smart Workplace SSO, redirect back there
+    const ssoOrigin = sessionStorage.getItem('sso_origin');
+    sessionStorage.removeItem('sso_origin');
+
+    if (ssoOrigin === 'swp') {
+      const swpUrl = import.meta.env.VITE_SWP_URL;
+      if (swpUrl) {
+        window.location.href = swpUrl;
+        return;
+      }
+    }
+
+    // Direct login user — stay on IOU login page
     nav('/login');
   }
 
