@@ -337,9 +337,15 @@ export default function Dashboard() {
           const shouldCount = filtersApplied || (d.getMonth() === month && d.getFullYear() === year);
           if (shouldCount) {
             approvedThisMonth++;
-            if (i.estimated_amount) {
+            // Use ACTUAL amount for settled IOUs, estimated for in-progress
+            const isSettled = ['RECONCILED', 'REDEEMED'].includes(i.status);
+            const expense = (i.expenses && i.expenses.length > 0) ? i.expenses[0] : null;
+            const amount = (isSettled && expense && expense.actual_amount != null)
+              ? Number(expense.actual_amount)
+              : Number(i.estimated_amount) || 0;
+            if (amount) {
               const cur = i.currency || 'GHS';
-              approvedAmountByCurrency[cur] = (approvedAmountByCurrency[cur] || 0) + (Number(i.estimated_amount) || 0);
+              approvedAmountByCurrency[cur] = (approvedAmountByCurrency[cur] || 0) + amount;
             }
           }
           const diff = Math.floor((today0 - (new Date(created)).setHours(0, 0, 0, 0)) / dayMs);
@@ -358,10 +364,10 @@ export default function Dashboard() {
 
   // Dynamic KPI labels
   const approvedLabel = useMemo(() => {
-    if (startDate && endDate) return `Value of approved IOUs (${formatDateLabel(startDate)} - ${formatDateLabel(endDate)})`;
-    if (startDate) return `Value of approved IOUs (from ${formatDateLabel(startDate)})`;
-    if (endDate) return `Value of approved IOUs (up to ${formatDateLabel(endDate)})`;
-    return 'Value of approved IOUs this month';
+    if (startDate && endDate) return `Amount spent (${formatDateLabel(startDate)} - ${formatDateLabel(endDate)})`;
+    if (startDate) return `Amount spent (from ${formatDateLabel(startDate)})`;
+    if (endDate) return `Amount spent (up to ${formatDateLabel(endDate)})`;
+    return 'Amount spent this month';
   }, [startDate, endDate]);
 
   const countLabel = useMemo(() => {
@@ -594,7 +600,7 @@ export default function Dashboard() {
                   <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
                 </svg>
               </div>
-              <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">Approved Amount</span>
+              <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">Amount Spent</span>
             </div>
             <div className="space-y-1 max-h-[72px] overflow-y-auto pr-1">
               {currencyEntries.length === 0 ? (
@@ -720,7 +726,7 @@ export default function Dashboard() {
             <div className="relative z-10">
               <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
-                <span>Approved Amounts by Currency</span>
+                <span>Amount Spent by Currency</span>
               </div>
               <ApprovedAmountsChart
                 amounts={analytics.approvedAmounts}
@@ -927,15 +933,20 @@ export default function Dashboard() {
                     {filteredIousLocal.map(i => {
                       const recon = i.reconciliation;
                       const expense = (i.expenses && i.expenses.length > 0) ? i.expenses[0] : null;
+                      const actualAmount = expense ? Number(expense.actual_amount) : null;
+                      const estimatedAmount = Number(i.estimated_amount) || 0;
                       let spendingLabel = null;
                       let spendingClass = '';
+                      let diffAmount = null;
                       if (recon && recon.diff_amount !== undefined && recon.diff_amount !== null) {
                         const diff = Number(recon.diff_amount);
+                        diffAmount = diff;
                         if (diff > 0) { spendingLabel = 'Overspent'; spendingClass = 'bg-red-100 text-red-700'; }
                         else if (diff < 0) { spendingLabel = 'Underspent'; spendingClass = 'bg-amber-100 text-amber-700'; }
                         else { spendingLabel = 'Exact'; spendingClass = 'bg-emerald-100 text-emerald-700'; }
                       } else if (expense && expense.actual_amount && i.estimated_amount) {
                         const diff = Number(expense.actual_amount) - Number(i.estimated_amount);
+                        diffAmount = diff;
                         if (diff > 0) { spendingLabel = 'Overspent'; spendingClass = 'bg-red-100 text-red-700'; }
                         else if (diff < 0) { spendingLabel = 'Underspent'; spendingClass = 'bg-amber-100 text-amber-700'; }
                         else { spendingLabel = 'Exact'; spendingClass = 'bg-emerald-100 text-emerald-700'; }
@@ -947,7 +958,15 @@ export default function Dashboard() {
                             <div className="text-xs text-slate-400 line-clamp-1">{i.purpose}</div>
                           </td>
                           <td className="py-3 text-slate-600 max-w-[180px] truncate" title={(i.requester && i.requester.display_name) || i.requester_name || i.requester_id || '-'}>{(i.requester && i.requester.display_name) || i.requester_name || i.requester_id}</td>
-                          <td className="py-3 font-medium text-slate-700 whitespace-nowrap">{formatCurrency(i.estimated_amount, i.currency)}</td>
+                          <td className="py-3 font-medium text-slate-700 whitespace-nowrap">
+                            <div>{formatCurrency(estimatedAmount, i.currency)}</div>
+                            {actualAmount != null && actualAmount !== estimatedAmount && (
+                              <div className={`text-xs mt-0.5 font-semibold ${diffAmount > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                                Actual: {formatCurrency(actualAmount, i.currency)}
+                                <span className="ml-1 opacity-70">({diffAmount > 0 ? '+' : ''}{formatCurrency(diffAmount, i.currency)})</span>
+                              </div>
+                            )}
+                          </td>
                           <td className="py-3"><StatusBadge status={i.status} /></td>
                           <td className="py-3">
                             {spendingLabel ? (

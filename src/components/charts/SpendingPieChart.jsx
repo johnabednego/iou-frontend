@@ -4,6 +4,11 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recha
 
 const COLORS = ['#f87171', '#34d399', '#818cf8'];
 
+function formatAmount(n) {
+  if (n == null || n === 0) return '0.00';
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
   if (percent < 0.05) return null;
   const RADIAN = Math.PI / 180;
@@ -25,14 +30,14 @@ const CustomTooltip = ({ active, payload }) => {
       <p className="flex items-center gap-2 text-xs">
         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: payload[0].payload.fill }} />
         <span className="text-slate-400">{name}:</span>
-        <span className="font-semibold text-white">{value}</span>
+        <span className="font-semibold text-white">{value} IOU{value !== 1 ? 's' : ''}</span>
       </p>
     </div>
   );
 };
 
 export default function SpendingPieChart({ data = {} }) {
-  const { overspent = 0, underspent = 0, exact = 0 } = data;
+  const { overspent = 0, underspent = 0, exact = 0, overspentTotal = 0, underspentTotal = 0 } = data;
   const total = overspent + underspent + exact;
 
   if (total === 0) {
@@ -54,38 +59,65 @@ export default function SpendingPieChart({ data = {} }) {
   ].filter(d => d.value > 0);
 
   return (
-    <ResponsiveContainer width="100%" height={320}>
-      <PieChart>
-        <Pie
-          data={chartData}
-          cx="50%"
-          cy="50%"
-          innerRadius={60}
-          outerRadius={110}
-          paddingAngle={3}
-          dataKey="value"
-          labelLine={false}
-          label={renderCustomLabel}
-          stroke="none"
-        >
-          {chartData.map((entry, index) => (
-            <Cell key={index} fill={entry.fill} />
-          ))}
-        </Pie>
-        <Tooltip content={<CustomTooltip />} />
-        <Legend
-          wrapperStyle={{ fontSize: 12, paddingTop: 8, color: '#cbd5e1' }}
-          iconType="circle"
-          iconSize={8}
-        />
-        {/* Center text */}
-        <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fontSize={22} fontWeight={700} fill="#ffffff">
-          {total}
-        </text>
-        <text x="50%" y="58%" textAnchor="middle" dominantBaseline="central" fontSize={11} fill="#94a3b8">
-          Total
-        </text>
-      </PieChart>
-    </ResponsiveContainer>
+    <div>
+      <ResponsiveContainer width="100%" height={260}>
+        <PieChart>
+          <Pie
+            data={chartData}
+            cx="50%"
+            cy="50%"
+            innerRadius={55}
+            outerRadius={100}
+            paddingAngle={3}
+            dataKey="value"
+            labelLine={false}
+            label={renderCustomLabel}
+            stroke="none"
+          >
+            {chartData.map((entry, index) => (
+              <Cell key={index} fill={entry.fill} />
+            ))}
+          </Pie>
+          <Tooltip content={<CustomTooltip />} />
+          <Legend
+            wrapperStyle={{ fontSize: 12, paddingTop: 8, color: '#cbd5e1' }}
+            iconType="circle"
+            iconSize={8}
+          />
+          {/* Center text */}
+          <text x="50%" y="48%" textAnchor="middle" dominantBaseline="central" fontSize={22} fontWeight={700} fill="#ffffff">
+            {total}
+          </text>
+          <text x="50%" y="58%" textAnchor="middle" dominantBaseline="central" fontSize={11} fill="#94a3b8">
+            Total
+          </text>
+        </PieChart>
+      </ResponsiveContainer>
+
+      {/* Monetary impact summary */}
+      {(overspentTotal > 0 || underspentTotal > 0) && (
+        <div className="mt-3 space-y-1.5 px-1">
+          {overspentTotal > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-red-400" />
+                <span className="text-slate-400">Total overspent</span>
+              </span>
+              <span className="font-bold text-red-400">+{formatAmount(overspentTotal)}</span>
+            </div>
+          )}
+          {underspentTotal > 0 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                <span className="text-slate-400">Total underspent</span>
+              </span>
+              <span className="font-bold text-emerald-400">-{formatAmount(underspentTotal)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
+

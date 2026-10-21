@@ -118,7 +118,7 @@ export default function ApprovedAmountsChart({ amounts = {}, monthlyChart = [], 
           </div>
         ))}
         {visibleCurrencies.length === 0 && (
-          <div className="col-span-4 text-sm text-teal-200/60 py-2">No approved amounts to display</div>
+          <div className="col-span-4 text-sm text-teal-200/60 py-2">No spending data to display</div>
         )}
       </div>
 
