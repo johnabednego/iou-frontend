@@ -26,6 +26,8 @@ const TX_TYPE_BADGES = {
   MANUAL_CREDIT: { label: 'Credit', cls: 'bg-emerald-100 text-emerald-700' },
   MANUAL_DEBIT: { label: 'Debit', cls: 'bg-orange-100 text-orange-700' },
   DISBURSEMENT_DEBIT: { label: 'Disbursement', cls: 'bg-red-100 text-red-700' },
+  RECONCILIATION_DEBIT: { label: 'Reconciliation', cls: 'bg-red-100 text-red-700' },
+  RECONCILIATION_CREDIT: { label: 'Reconciliation', cls: 'bg-emerald-100 text-emerald-700' },
   RECONCILIATION_ADJUSTMENT: { label: 'Reconciliation', cls: 'bg-purple-100 text-purple-700' }
 };
 
@@ -395,7 +397,9 @@ export default function FundManagement() {
               <option value="MANUAL_CREDIT">Credit</option>
               <option value="MANUAL_DEBIT">Debit</option>
               <option value="DISBURSEMENT_DEBIT">Disbursement</option>
-              <option value="RECONCILIATION_ADJUSTMENT">Reconciliation</option>
+              <option value="RECONCILIATION_DEBIT">Reconciliation (Overspent)</option>
+              <option value="RECONCILIATION_CREDIT">Reconciliation (Underspent)</option>
+              <option value="RECONCILIATION_ADJUSTMENT">Reconciliation (Legacy)</option>
             </select>
           </div>
         </div>
