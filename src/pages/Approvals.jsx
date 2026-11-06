@@ -23,9 +23,16 @@ export default function Approvals() {
 
   async function load() {
     setLoading(true);
-    try { const r = await getMyApprovals(); setApprovals(r.data.data || []); }
-    catch { setApprovals([]); }
-    finally { setLoading(false); }
+    try {
+      const r = await getMyApprovals();
+      const list = r.data.data || [];
+      setApprovals(list);
+      window.dispatchEvent(new CustomEvent('approvals-count-sync', { detail: { count: list.length } }));
+    } catch {
+      setApprovals([]);
+    } finally {
+      setLoading(false);
+    }
   }
   useEffect(() => { load(); }, []);
 
@@ -50,7 +57,11 @@ export default function Approvals() {
     setDeciding(true);
     try {
       await decideApproval(modal.id, { decision: modal.decision, comments });
-      setApprovals(a => a.filter(x => x.id !== modal.id));
+      setApprovals(a => {
+        const next = a.filter(x => x.id !== modal.id);
+        window.dispatchEvent(new CustomEvent('approvals-count-sync', { detail: { count: next.length } }));
+        return next;
+      });
       setModal(null);
       toast.success(`Decision recorded: ${modal.decision}`);
     } catch (err) { toast.error(err?.response?.data?.message || 'Failed'); }

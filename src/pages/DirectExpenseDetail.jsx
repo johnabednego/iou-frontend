@@ -333,7 +333,21 @@ export default function DirectExpenseDetail() {
       <Card title="Receipts / Evidence">
         {(isOwner && ['DRAFT', 'RETURNED'].includes(status)) && (
           <div className="mb-3">
-            <FileUploader onUploaded={(a) => setAttachments(s => [...s, a])} />
+            <FileUploader
+              directExpenseId={de.id}
+              onUploaded={(a) => {
+                if (!a || typeof a !== 'object' || !a.file_name) return;
+                setAttachments((prev) => {
+                  const exists = prev.some(x =>
+                    (x.id && a.id && x.id === a.id) ||
+                    (x.file_path && a.file_path && x.file_path === a.file_path) ||
+                    (x.blob_name && a.blob_name && x.blob_name === a.blob_name)
+                  );
+                  if (exists) return prev;
+                  return [...prev, a];
+                });
+              }}
+            />
           </div>
         )}
         {attachments.length === 0 ? (
@@ -500,6 +514,7 @@ function InlineApprovalActions({ approvalId, onDecided }) {
       toastify.success(`Decision recorded: ${decision}`);
       setShowModal(null);
       setComments('');
+      window.dispatchEvent(new Event('approvals-updated'));
       onDecided?.();
     } catch (err) { toastify.error(err?.response?.data?.message || 'Failed'); }
     finally { setDeciding(false); }

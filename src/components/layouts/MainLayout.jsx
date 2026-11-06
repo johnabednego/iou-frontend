@@ -1,19 +1,27 @@
 // src/components/layouts/MainLayout.jsx
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect, useCallback } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import NotificationsDropdown from '../NotificationsDropdown';
 import { AuthContext } from '../../contexts/AuthContext';
+import { getMyApprovals } from '../../services/iouService';
 import mpsLogo from '../../assets/mps.svg';
 
-const NavItem = ({ to, label, show = true, isActive, onClick }) => {
+const NavItem = ({ to, label, show = true, isActive, onClick, badge }) => {
   if (!show) return null;
+
+  const badgeElement = badge > 0 ? (
+    <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold bg-red-500 text-white rounded-full shadow-sm">
+      {badge > 99 ? '99+' : badge}
+    </span>
+  ) : null;
 
   if (isActive) {
     return (
       <div className="relative rounded-xl overflow-hidden">
         <div className="absolute inset-0 animate-spin-gradient bg-[conic-gradient(from_0deg,rgba(59,130,246,0.5),rgba(255,255,255,0.6),rgba(59,130,246,0.7))]" />
-        <div className="relative m-[1.5px] flex items-center gap-3 px-4 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/10">
+        <div className="relative m-[1.5px] flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-white/10 backdrop-blur-md border border-white/10">
           <span className="text-sm font-semibold text-[#10306c]">{label}</span>
+          {badgeElement}
         </div>
       </div>
     );
@@ -23,9 +31,10 @@ const NavItem = ({ to, label, show = true, isActive, onClick }) => {
     <Link
       to={to}
       onClick={onClick}
-      className="flex items-center gap-3 px-4 py-3 rounded-md text-white/90 hover:bg-white/10 hover:text-[#242220] transition-colors"
+      className="flex items-center justify-between gap-3 px-4 py-3 rounded-md text-white/90 hover:bg-white/10 hover:text-[#242220] transition-colors"
     >
       <span className="text-sm font-medium">{label}</span>
+      {badgeElement}
     </Link>
   );
 };
@@ -50,6 +59,49 @@ export default function MainLayout() {
   const canSeeApprovals = isCashierOrAdmin || isApprover || user?.role === 'hod';
   const canSeeRedeemed = isCashierOrAdmin || isApprover;
 
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+
+  const fetchPendingCount = useCallback(async () => {
+    if (!user || !canSeeApprovals) {
+      setPendingApprovalsCount(0);
+      return;
+    }
+    try {
+      const res = await getMyApprovals();
+      if (Array.isArray(res.data?.data)) {
+        setPendingApprovalsCount(res.data.data.length);
+      }
+    } catch {
+      // Silently ignore polling/network errors
+    }
+  }, [user, canSeeApprovals]);
+
+  useEffect(() => {
+    fetchPendingCount();
+
+    // Poll every 30 seconds
+    const intervalId = setInterval(fetchPendingCount, 30000);
+
+    // Listen for approval decision events
+    const handleApprovalUpdate = () => {
+      fetchPendingCount();
+    };
+    const handleCountSync = (e) => {
+      if (typeof e.detail?.count === 'number') {
+        setPendingApprovalsCount(e.detail.count);
+      }
+    };
+
+    window.addEventListener('approvals-updated', handleApprovalUpdate);
+    window.addEventListener('approvals-count-sync', handleCountSync);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('approvals-updated', handleApprovalUpdate);
+      window.removeEventListener('approvals-count-sync', handleCountSync);
+    };
+  }, [fetchPendingCount, pathname]);
+
   const sidebarContent = (
     <>
       <div className="flex items-center gap-3 mb-8">
@@ -65,7 +117,7 @@ export default function MainLayout() {
         <NavItem to="/ious/create" label="New Request" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
         <NavItem to="/ious" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
         <NavItem to="/direct-expenses" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'Direct Expenses' : 'My Direct Expenses'} isActive={isActivePath('/direct-expenses')} onClick={closeSidebar} />
-        <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
+        <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} badge={pendingApprovalsCount} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
         <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
         <NavItem to="/fund-management" label="Fund Management" show={user?.is_admin || user?.role === 'cashier'} isActive={isActivePath('/fund-management')} onClick={closeSidebar} />
         {/* admin & cashier links */}

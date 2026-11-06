@@ -404,7 +404,21 @@ export default function IOUDetail() {
       <Card title="Attachments">
         {(isOwner && ['DRAFT', 'RETURNED'].includes(status)) && (
           <div className="mb-3">
-            <FileUploader iouId={iou.id} onUploaded={(a) => setAttachments(s => [...s, a])} />
+            <FileUploader
+              iouId={iou.id}
+              onUploaded={(a) => {
+                if (!a || typeof a !== 'object' || !a.file_name) return;
+                setAttachments((prev) => {
+                  const exists = prev.some(x =>
+                    (x.id && a.id && x.id === a.id) ||
+                    (x.file_path && a.file_path && x.file_path === a.file_path) ||
+                    (x.blob_name && a.blob_name && x.blob_name === a.blob_name)
+                  );
+                  if (exists) return prev;
+                  return [...prev, a];
+                });
+              }}
+            />
           </div>
         )}
         {attachments.length === 0 ? (
@@ -659,6 +673,7 @@ function InlineApprovalActions({ approvalId, iouId, onDecided, isExpense = false
       toastify.success(`Decision recorded: ${decision}`);
       setShowModal(null);
       setComments('');
+      window.dispatchEvent(new Event('approvals-updated'));
       onDecided?.();
     } catch (err) {
       toastify.error(err?.response?.data?.message || 'Failed to record decision');
@@ -1146,7 +1161,20 @@ function ExpensePanel({ currency = 'GHS', onSubmit, loading }) {
         </div>
         <div>
           <label className="block text-sm text-slate-700 mb-1">Receipt / Supporting Documents <span className="text-red-500">*</span></label>
-          <FileUploader onUploaded={(att) => setExpAttachments(s => [...s, att])} />
+          <FileUploader
+            onUploaded={(att) => {
+              if (!att || typeof att !== 'object' || !att.file_name) return;
+              setExpAttachments((prev) => {
+                const exists = prev.some(x =>
+                  (x.id && att.id && x.id === att.id) ||
+                  (x.file_path && att.file_path && x.file_path === att.file_path) ||
+                  (x.blob_name && att.blob_name && x.blob_name === att.blob_name)
+                );
+                if (exists) return prev;
+                return [...prev, att];
+              });
+            }}
+          />
           {expAttachments.length > 0 && (
             <div className="mt-2 space-y-1">
               {expAttachments.map((a, i) => (
@@ -1230,7 +1258,20 @@ function EditExpensePanel({ expense, expenseApprovals = [], approverNames = {}, 
             </div>
           )}
           {/* Upload new attachments */}
-          <FileUploader onUploaded={(att) => setExpAttachments(s => [...s, att])} />
+          <FileUploader
+            onUploaded={(att) => {
+              if (!att || typeof att !== 'object' || !att.file_name) return;
+              setExpAttachments((prev) => {
+                const exists = prev.some(x =>
+                  (x.id && att.id && x.id === att.id) ||
+                  (x.file_path && att.file_path && x.file_path === att.file_path) ||
+                  (x.blob_name && att.blob_name && x.blob_name === att.blob_name)
+                );
+                if (exists) return prev;
+                return [...prev, att];
+              });
+            }}
+          />
         </div>
         <Button onClick={handleSubmit} disabled={loading || !actualAmount}>
           {loading ? 'Re-submitting...' : 'Re-submit Expense'}

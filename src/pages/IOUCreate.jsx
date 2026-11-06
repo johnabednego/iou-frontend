@@ -340,7 +340,15 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
                   console.warn('Invalid upload response:', att);
                   return;
                 }
-                setAttachments((prev) => [...prev, att]);
+                setAttachments((prev) => {
+                  const exists = prev.some(a =>
+                    (a.id && att.id && a.id === att.id) ||
+                    (a.file_path && att.file_path && a.file_path === att.file_path) ||
+                    (a.blob_name && att.blob_name && a.blob_name === att.blob_name)
+                  );
+                  if (exists) return prev;
+                  return [...prev, att];
+                });
                 setErrors((s) => ({ ...s, attachments: undefined }));
               }}
             />
