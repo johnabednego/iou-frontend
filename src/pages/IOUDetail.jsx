@@ -1025,16 +1025,32 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
 function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading }) {
   const [method, setMethod] = useState('');
   const [reference, setReference] = useState('');
+  const [ifsVoucher, setIfsVoucher] = useState('');
   const [notes, setNotes] = useState('');
   const [methodError, setMethodError] = useState('');
+  const [voucherError, setVoucherError] = useState('');
 
   function handleSubmit() {
+    let hasError = false;
     if (!method) {
       setMethodError('Payment Method is required');
-      return;
+      hasError = true;
     }
+    if (!ifsVoucher || !ifsVoucher.trim()) {
+      setVoucherError('IFS Voucher Number is required');
+      hasError = true;
+    }
+    if (hasError) return;
+
     setMethodError('');
-    onDisburse({ amount: Number(estimatedAmount), payment_method: method, payment_reference: reference, notes });
+    setVoucherError('');
+    onDisburse({
+      amount: Number(estimatedAmount),
+      payment_method: method,
+      payment_reference: reference,
+      ifs_voucher_number: ifsVoucher.trim(),
+      notes
+    });
   }
 
   return (
@@ -1072,8 +1088,20 @@ function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading 
           <input value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. TXN-12345" className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
         </div>
         <div>
+          <label className="block text-sm text-slate-700 mb-1">
+            IFS Voucher Number <span className="text-red-500">*</span>
+          </label>
+          <input
+            value={ifsVoucher}
+            onChange={e => { setIfsVoucher(e.target.value); setVoucherError(''); }}
+            placeholder="e.g. 2026/V/12345"
+            className={`w-full px-3 py-2 rounded-lg border text-sm font-mono ${voucherError ? 'border-red-400 focus:ring-red-200' : 'border-slate-200 focus:ring-blue-200'} focus:outline-none focus:ring-2`}
+          />
+          {voucherError && <p className="text-red-500 text-xs mt-1">{voucherError}</p>}
+        </div>
+        <div className="sm:col-span-2">
           <label className="block text-sm text-slate-700 mb-1">Notes</label>
-          <input value={notes} onChange={e => setNotes(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
+          <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Disbursement notes..." className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
         </div>
       </div>
       <div className="mt-4">

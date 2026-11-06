@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   getDirectExpense, submitDirectExpense, assignDEApprovers,
   updateDirectExpense, confirmDEApproval,
-  disburseDERequest, confirmDEDisbursement,
+  disburseDERequest, confirmDEDisbursement, completeDirectExpense,
   getDEDisbursements, getUsers, decideApproval as decideApprovalApi, listApprovers as listApproversApi,
   cashierRejectDE as cashierRejectDEApi, cashierReturnDE as cashierReturnDEApi
 } from '../services/iouService';
@@ -22,11 +22,12 @@ function StatusBadge({ status }) {
     PENDING_HOD_ASSIGNMENT: 'bg-indigo-100 text-indigo-800',
     APPROVED_FOR_DISBURSEMENT: 'bg-emerald-100 text-emerald-800',
     DISBURSED: 'bg-blue-100 text-blue-800',
+    DISBURSEMENT_CONFIRMED: 'bg-blue-200 text-blue-900',
     COMPLETED: 'bg-teal-100 text-teal-800',
     RETURNED: 'bg-yellow-50 text-yellow-800',
     REJECTED: 'bg-red-100 text-red-700'
   };
-  const label = s === 'PENDING_HOD_ASSIGNMENT' ? 'Awaiting Approver Assignment' : s.replace(/_/g, ' ');
+  const label = s === 'PENDING_HOD_ASSIGNMENT' ? 'Awaiting Approver Assignment' : s === 'DISBURSEMENT_CONFIRMED' ? 'Funds Confirmed' : s.replace(/_/g, ' ');
   return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${colors[s] || 'bg-slate-100 text-slate-700'}`}>{label}</span>;
 }
 
@@ -43,10 +44,10 @@ function shortDate(dt) {
 }
 
 /* ── Status Timeline (simplified for Direct Expense) ── */
-const TIMELINE_STEPS = ['DRAFT', 'PENDING_HOD_ASSIGNMENT', 'PENDING', 'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'COMPLETED'];
+const TIMELINE_STEPS = ['DRAFT', 'PENDING_HOD_ASSIGNMENT', 'PENDING', 'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'DISBURSEMENT_CONFIRMED', 'COMPLETED'];
 const STEP_LABELS = {
   DRAFT: 'Draft', PENDING_HOD_ASSIGNMENT: 'Assign Approvers', PENDING: 'Pending Approval',
-  APPROVED_FOR_DISBURSEMENT: 'Approved', DISBURSED: 'Disbursed', COMPLETED: 'Completed'
+  APPROVED_FOR_DISBURSEMENT: 'Approved', DISBURSED: 'Disbursed', DISBURSEMENT_CONFIRMED: 'Funds Confirmed', COMPLETED: 'Completed'
 };
 
 function StatusTimeline({ currentStatus }) {
@@ -145,6 +146,7 @@ export default function DirectExpenseDetail() {
       if (action === 'submit') response = await submitDirectExpense(id);
       else if (action === 'disburse') response = await disburseDERequest(id, data);
       else if (action === 'confirmDisbursement') response = await confirmDEDisbursement(id, data);
+      else if (action === 'complete') response = await completeDirectExpense(id, data);
       toastify.success(response?.data?.message || `${action} completed successfully!`);
       await load();
     } catch (err) {
@@ -372,14 +374,35 @@ export default function DirectExpenseDetail() {
         </Card>
       )}
 
-      {/* Confirm Receipt of Funds & Complete → COMPLETED */}
-      {(isOwner || isCashier) && status === 'DISBURSED' && (
+      {/* Step 1: Requester confirms receipt of funds */}
+      {isOwner && status === 'DISBURSED' && (
+        <Card title="Confirm Receipt of Funds">
+          <p className="text-sm text-slate-600 mb-3">Please confirm that you have received the disbursed funds.</p>
+          <Button onClick={() => handleAction('confirmDisbursement')} disabled={actionLoading}>
+            {actionLoading ? 'Confirming...' : '✓ Confirm - I received the funds'}
+          </Button>
+        </Card>
+      )}
+
+      {/* Cashier sees waiting banner while status is DISBURSED */}
+      {isCashier && !isOwner && status === 'DISBURSED' && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800 flex items-center gap-3">
+          <span className="text-xl">⏳</span>
+          <div>
+            <span className="font-semibold">Funds Disbursed:</span> Awaiting requester to confirm receipt of funds before this request can be completed.
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Cashier marks as COMPLETED with mandatory IFS Voucher */}
+      {isCashier && status === 'DISBURSEMENT_CONFIRMED' && (
         <Card title="Complete Direct Expense">
-          <p className="text-sm text-slate-600 mb-3">
-            Please enter the IFS Voucher Number and confirm receipt of funds to finalize and mark this Direct Expense as <strong>Completed</strong>.
-          </p>
+          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 mb-4">
+            <p className="text-sm text-emerald-800 font-medium">✓ Requester has confirmed receipt of funds.</p>
+            <p className="text-sm text-emerald-700 mt-0.5">Please verify or enter the IFS Voucher Number to finalize and mark this Direct Expense as Completed.</p>
+          </div>
           <div className="max-w-md mb-4">
-            <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
               IFS Voucher Number <span className="text-red-500">*</span>
             </label>
             <input
@@ -396,13 +419,23 @@ export default function DirectExpenseDetail() {
                 toastify.error('IFS Voucher Number is required to complete the Direct Expense');
                 return;
               }
-              handleAction('confirmDisbursement', { ifs_voucher_number: deIfsVoucher.trim() });
+              handleAction('complete', { ifs_voucher_number: deIfsVoucher.trim() });
             }}
-            disabled={actionLoading}
+            disabled={actionLoading || !deIfsVoucher.trim()}
           >
-            {actionLoading ? 'Completing...' : '✓ Confirm & Complete'}
+            {actionLoading ? 'Completing...' : '✓ Mark as Completed'}
           </Button>
         </Card>
+      )}
+
+      {/* Requester sees waiting banner while status is DISBURSEMENT_CONFIRMED */}
+      {isOwner && !isCashier && status === 'DISBURSEMENT_CONFIRMED' && (
+        <div className="p-4 bg-teal-50 border border-teal-200 rounded-xl text-sm text-teal-800 flex items-center gap-3">
+          <span className="text-xl">✓</span>
+          <div>
+            <span className="font-semibold">Receipt Confirmed:</span> You have confirmed receipt of funds. Awaiting cashier to finalize and mark this Direct Expense as completed.
+          </div>
+        </div>
       )}
 
       {/* Submit for Approval */}
@@ -738,21 +771,22 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, loading }) {
             <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Transaction ref, cheque number, etc." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">IFS Voucher # (Optional)</label>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">IFS Voucher Number <span className="text-red-500">*</span></label>
             <input value={ifsVoucher} onChange={e => setIfsVoucher(e.target.value)} placeholder="e.g. 2026/V/12345" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono" />
           </div>
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Optional notes..." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notes..." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
         </div>
         <Button onClick={() => {
           if (!amount || isNaN(amount) || Number(amount) <= 0) { toastify.error('Enter a valid amount'); return; }
+          if (!ifsVoucher || !ifsVoucher.trim()) { toastify.error('IFS Voucher Number is required to disburse funds'); return; }
           onDisburse({
             amount: Number(amount),
             payment_method: method || null,
             payment_reference: reference || null,
-            ifs_voucher_number: ifsVoucher ? ifsVoucher.trim() : null,
+            ifs_voucher_number: ifsVoucher.trim(),
             notes: notes || null
           });
         }} disabled={loading}>

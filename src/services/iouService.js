@@ -106,6 +106,8 @@ export const assignDEApprovers = (id, approvers) => api.post(`/direct-expenses/$
 export const confirmDEApproval = (id) => api.post(`/direct-expenses/${id}/confirm-approval`);
 export const disburseDERequest = (id, data) => api.post(`/direct-expenses/${id}/disburse`, data);
 export const confirmDEDisbursement = (id, data) => api.post(`/direct-expenses/${id}/confirm-disbursement`, data);
+export const confirmDEReceipt = (id, data) => api.post(`/direct-expenses/${id}/confirm-receipt`, data);
+export const completeDirectExpense = (id, data) => api.post(`/direct-expenses/${id}/complete`, data);
 export const getDEDisbursements = (id) => api.get(`/direct-expenses/${id}/disbursements`);
 export const cashierRejectDE = (id, data) => api.post(`/direct-expenses/${id}/cashier-reject`, data);
 export const cashierReturnDE = (id, data) => api.post(`/direct-expenses/${id}/cashier-return`, data);
