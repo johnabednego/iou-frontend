@@ -44,8 +44,9 @@ export default function AuditLogs() {
   const totalPages = Math.ceil(total / limit);
 
   function entityLink(log) {
-    if (log.entity === 'IOU' && log.entity_id) return <Link to={`/ious/${log.entity_id}`} className="text-emerald-600 hover:underline">{log.entity_id.slice(0, 8)}...</Link>;
-    return <span className="text-slate-500">{log.entity_id ? log.entity_id.slice(0, 8) + '...' : '-'}</span>;
+    if (log.entity === 'IOU' && log.entity_id) return <Link to={`/ious/${log.entity_id}`} className="text-emerald-600 hover:underline font-mono">{log.entity_id.slice(0, 8)}...</Link>;
+    if (log.entity === 'DIRECT_EXPENSE' && log.entity_id) return <Link to={`/direct-expenses/${log.entity_id}`} className="text-teal-600 hover:underline font-mono">{log.entity_id.slice(0, 8)}...</Link>;
+    return <span className="text-slate-500 font-mono">{log.entity_id ? log.entity_id.slice(0, 8) + '...' : '-'}</span>;
   }
 
   const uniqueActions = new Set(logs.map(l => l.action).filter(Boolean)).size;
@@ -56,7 +57,7 @@ export default function AuditLogs() {
       <div>
         <h1 className="text-2xl font-bold text-slate-800">System Audit Logs</h1>
         <p className="text-sm text-slate-500 mt-1">
-          Complete, tamper-evident trail of all IOU requests, approval decisions, disbursements, and administrative changes.
+          Complete, tamper-evident trail of all IOU requests, direct expenses, approval decisions, disbursements, and administrative changes.
         </p>
       </div>
 

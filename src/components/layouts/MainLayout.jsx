@@ -38,8 +38,7 @@ export default function MainLayout() {
 
   const isActivePath = (path) => {
     if (path === '/') return pathname === '/';
-    if (pathname === '/ious/create') return pathname === path;
-    if (pathname === '/direct-expenses/create') return pathname === path;
+    if (pathname === '/ious/create' || pathname === '/direct-expenses/create') return path === '/ious/create';
     return pathname === path || pathname.startsWith(path + '/');
   };
 
@@ -66,7 +65,6 @@ export default function MainLayout() {
         <NavItem to="/ious" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
         <NavItem to="/ious/create" label="New Request" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
         <NavItem to="/direct-expenses" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'Direct Expenses' : 'My Direct Expenses'} isActive={isActivePath('/direct-expenses')} onClick={closeSidebar} />
-        <NavItem to="/direct-expenses/create" label="New Direct Expense" isActive={isActivePath('/direct-expenses/create')} onClick={closeSidebar} />
         <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
         <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
         <NavItem to="/fund-management" label="Fund Management" show={user?.is_admin || user?.role === 'cashier'} isActive={isActivePath('/fund-management')} onClick={closeSidebar} />

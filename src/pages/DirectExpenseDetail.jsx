@@ -103,12 +103,16 @@ export default function DirectExpenseDetail() {
   const [editAmount, setEditAmount] = useState('');
   const [editCurrency, setEditCurrency] = useState('GHS');
   const [approverNames, setApproverNames] = useState({});
+  const [deIfsVoucher, setDeIfsVoucher] = useState('');
 
   async function load() {
     setLoading(true);
     try {
       const res = await getDirectExpense(id);
       setDe(res.data.directExpense);
+      if (res.data.directExpense?.ifs_voucher_number) {
+        setDeIfsVoucher(res.data.directExpense.ifs_voucher_number);
+      }
       setAttachments(res.data.attachments || []);
       setApprovals(res.data.approvals || []);
 
@@ -140,7 +144,7 @@ export default function DirectExpenseDetail() {
       let response;
       if (action === 'submit') response = await submitDirectExpense(id);
       else if (action === 'disburse') response = await disburseDERequest(id, data);
-      else if (action === 'confirmDisbursement') response = await confirmDEDisbursement(id);
+      else if (action === 'confirmDisbursement') response = await confirmDEDisbursement(id, data);
       toastify.success(response?.data?.message || `${action} completed successfully!`);
       await load();
     } catch (err) {
@@ -257,6 +261,24 @@ export default function DirectExpenseDetail() {
             <DetailItem label="Department" value={de.department || '-'} />
             <DetailItem label="Created" value={shortDate(de.created_at)} />
             <DetailItem label="Submitted" value={shortDate(de.submitted_at)} />
+            {de.ifs_voucher_number && (
+              <DetailItem
+                label="IFS Voucher #"
+                value={
+                  <a
+                    href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:underline inline-flex items-center gap-1 font-semibold"
+                  >
+                    {de.ifs_voucher_number}
+                    <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                }
+              />
+            )}
           </div>
         )}
       </Card>
@@ -350,12 +372,35 @@ export default function DirectExpenseDetail() {
         </Card>
       )}
 
-      {/* Confirm Receipt of Funds → COMPLETED */}
-      {isOwner && status === 'DISBURSED' && (
-        <Card title="Confirm Receipt of Funds">
-          <p className="text-sm text-slate-600 mb-3">Please confirm that you have received the disbursed funds. This will mark the Direct Expense as <strong>Completed</strong>.</p>
-          <Button onClick={() => handleAction('confirmDisbursement')} disabled={actionLoading}>
-            {actionLoading ? 'Confirming...' : '✓ Confirm - I received the funds'}
+      {/* Confirm Receipt of Funds & Complete → COMPLETED */}
+      {(isOwner || isCashier) && status === 'DISBURSED' && (
+        <Card title="Complete Direct Expense">
+          <p className="text-sm text-slate-600 mb-3">
+            Please enter the IFS Voucher Number and confirm receipt of funds to finalize and mark this Direct Expense as <strong>Completed</strong>.
+          </p>
+          <div className="max-w-md mb-4">
+            <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">
+              IFS Voucher Number <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. 2026/V/12345"
+              value={deIfsVoucher}
+              onChange={e => setDeIfsVoucher(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 font-mono"
+            />
+          </div>
+          <Button
+            onClick={() => {
+              if (!deIfsVoucher || !deIfsVoucher.trim()) {
+                toastify.error('IFS Voucher Number is required to complete the Direct Expense');
+                return;
+              }
+              handleAction('confirmDisbursement', { ifs_voucher_number: deIfsVoucher.trim() });
+            }}
+            disabled={actionLoading}
+          >
+            {actionLoading ? 'Completing...' : '✓ Confirm & Complete'}
           </Button>
         </Card>
       )}
@@ -629,6 +674,7 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, loading }) {
   const [amount, setAmount] = useState(deAmount || '');
   const [method, setMethod] = useState('');
   const [reference, setReference] = useState('');
+  const [ifsVoucher, setIfsVoucher] = useState('');
   const [notes, setNotes] = useState('');
 
   return (
@@ -650,9 +696,15 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, loading }) {
             </select>
           </div>
         </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Payment Reference</label>
-          <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Transaction ref, cheque number, etc." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Payment Reference</label>
+            <input value={reference} onChange={e => setReference(e.target.value)} placeholder="Transaction ref, cheque number, etc." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">IFS Voucher # (Optional)</label>
+            <input value={ifsVoucher} onChange={e => setIfsVoucher(e.target.value)} placeholder="e.g. 2026/V/12345" className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm font-mono" />
+          </div>
         </div>
         <div>
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notes</label>
@@ -660,7 +712,13 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, loading }) {
         </div>
         <Button onClick={() => {
           if (!amount || isNaN(amount) || Number(amount) <= 0) { toastify.error('Enter a valid amount'); return; }
-          onDisburse({ amount: Number(amount), payment_method: method || null, payment_reference: reference || null, notes: notes || null });
+          onDisburse({
+            amount: Number(amount),
+            payment_method: method || null,
+            payment_reference: reference || null,
+            ifs_voucher_number: ifsVoucher ? ifsVoucher.trim() : null,
+            notes: notes || null
+          });
         }} disabled={loading}>
           {loading ? 'Disbursing...' : `Disburse ${formatCurrency(amount, currency)}`}
         </Button>

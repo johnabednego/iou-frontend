@@ -522,13 +522,13 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-3">
             <Link
-              to="/ious/create"
+              to="/ious/create?type=iou"
               className="px-5 py-2.5 rounded-xl bg-white/15 backdrop-blur-sm border border-white/25 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold hover:bg-white/25 transition-all shadow-sm flex items-center gap-2"
             >
               + New IOU
             </Link>
             <Link
-              to="/direct-expenses/create"
+              to="/ious/create?type=direct-expense"
               className="px-5 py-2.5 rounded-xl bg-teal-500/30 backdrop-blur-sm border border-teal-300/40 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold hover:bg-teal-500/40 transition-all shadow-sm flex items-center gap-2"
             >
               + Direct Expense
@@ -705,28 +705,33 @@ export default function Dashboard() {
                 <div className="space-y-1 max-h-[72px] overflow-y-auto pr-1">
                   {(() => {
                     // Build DE currency entries matching IOU pattern: show all active currencies even if 0
-                    const deCurrMap = {};
-                    if (analytics.deCurrencySummary) {
-                      analytics.deCurrencySummary.forEach(cs => { deCurrMap[cs.currency] = Number(cs.total_amount) || 0; });
-                    }
+                    const deCurrMap = (analytics.deApprovedAmounts && analytics.deApprovedAmounts.monthly) || {};
                     const codeSet = new Set();
                     if (currencies && currencies.length > 0) {
-                      currencies.filter(c => c.is_active).forEach(c => codeSet.add(c.code));
+                      currencies.forEach(c => codeSet.add(c.code));
                     } else {
                       ['GHS', 'USD', 'EUR', 'GBP'].forEach(c => codeSet.add(c));
                     }
                     Object.keys(deCurrMap).forEach(c => codeSet.add(c));
                     const order = ['GHS', 'USD', 'EUR', 'GBP'];
-                    const entries = [...codeSet].sort((a, b) => {
+                    const entries = [];
+                    for (const code of codeSet) {
+                      const currObj = currencies.find(c => c.code === code);
+                      const isActive = currObj ? !!currObj.is_active : (currencies.length === 0);
+                      const amt = deCurrMap[code] || 0;
+                      if (!isActive && amt <= 0) continue;
+                      entries.push([code, amt]);
+                    }
+                    entries.sort(([a], [b]) => {
                       const idxA = order.indexOf(a); const idxB = order.indexOf(b);
                       if (idxA !== -1 && idxB !== -1) return idxA - idxB;
                       if (idxA !== -1) return -1; if (idxB !== -1) return 1;
                       return a.localeCompare(b);
                     });
-                    return entries.map(cur => (
+                    return entries.map(([cur, amt]) => (
                       <div key={cur} className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-cyan-200 bg-white/10 px-1.5 py-0.5 rounded">{cur}</span>
-                        <span className="text-sm font-bold text-white">{formatCurrency(deCurrMap[cur] || 0, cur)}</span>
+                        <span className="text-sm font-bold text-white">{formatCurrency(amt, cur)}</span>
                       </div>
                     ));
                   })()}
@@ -822,7 +827,7 @@ export default function Dashboard() {
               <div className="relative z-10">
                 <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-                  <span>Weekly Trend (Last 8 Weeks)</span>
+                  <span>IOU Weekly Trend (Last 8 Weeks)</span>
                 </div>
                 <WeeklyTrendChart data={analytics.iousByWeek} />
               </div>
@@ -832,7 +837,7 @@ export default function Dashboard() {
               <div className="relative z-10">
                 <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" />
-                  <span>Status Distribution</span>
+                  <span>IOU Status Distribution</span>
                 </div>
                 <StatusDistributionChart data={analytics.statusDistribution} />
               </div>
@@ -845,7 +850,7 @@ export default function Dashboard() {
             <div className="relative z-10">
               <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
-                <span>Amount Spent by Currency</span>
+                <span>IOU Amount Spent by Currency</span>
               </div>
               <ApprovedAmountsChart
                 amounts={analytics.approvedAmounts}
@@ -862,7 +867,7 @@ export default function Dashboard() {
               <div className="relative z-10">
                 <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
-                  <span>Department Distribution</span>
+                  <span>IOU Department Distribution</span>
                 </div>
                 <DepartmentIOUChart data={analytics.departmentBreakdown} />
               </div>

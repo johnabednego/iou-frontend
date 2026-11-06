@@ -48,9 +48,14 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function ApprovedAmountsChart({ amounts = {}, monthlyChart = [], currencies = [] }) {
   const [activeTab, setActiveTab] = useState('monthly');
 
-  // Get all currencies from the data
+  // Get all currencies from the data, ensuring all active currencies are included even if amount is 0
   const allCurrencies = useMemo(() => {
     const set = new Set();
+    if (currencies && currencies.length > 0) {
+      currencies.filter(c => c.is_active).forEach(c => set.add(c.code));
+    } else {
+      ['GHS', 'USD', 'EUR', 'GBP'].forEach(c => set.add(c));
+    }
     for (const period of Object.values(amounts)) {
       for (const code of Object.keys(period || {})) set.add(code);
     }
@@ -59,8 +64,16 @@ export default function ApprovedAmountsChart({ amounts = {}, monthlyChart = [], 
         if (key !== 'month') set.add(key);
       }
     }
-    return Array.from(set).sort();
-  }, [amounts, monthlyChart]);
+    const order = ['GHS', 'USD', 'EUR', 'GBP'];
+    return Array.from(set).sort((a, b) => {
+      const idxA = order.indexOf(a);
+      const idxB = order.indexOf(b);
+      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+      if (idxA !== -1) return -1;
+      if (idxB !== -1) return 1;
+      return a.localeCompare(b);
+    });
+  }, [amounts, monthlyChart, currencies]);
 
   // Summary cards for the selected period
   const currentAmounts = amounts[activeTab] || {};
