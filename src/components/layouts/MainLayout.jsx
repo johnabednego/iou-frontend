@@ -62,8 +62,8 @@ export default function MainLayout() {
 
       <nav className="space-y-2" aria-label="Main navigation">
         <NavItem to="/" label="Dashboard" isActive={isActivePath('/')} onClick={closeSidebar} />
-        <NavItem to="/ious" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
         <NavItem to="/ious/create" label="New Request" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
+        <NavItem to="/ious" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
         <NavItem to="/direct-expenses" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'Direct Expenses' : 'My Direct Expenses'} isActive={isActivePath('/direct-expenses')} onClick={closeSidebar} />
         <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
         <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
