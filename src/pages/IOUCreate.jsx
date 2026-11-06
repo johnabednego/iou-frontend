@@ -63,15 +63,23 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
   // Check fund sufficiency when amount or currency changes
   useEffect(() => {
     const numAmt = Number(amount);
-    if (!currency || !numAmt || numAmt <= 0) {
+    if (!currency) return;
+
+    if (amount !== '' && (isNaN(numAmt) || numAmt <= 0)) {
+      setFundSufficient(false);
+      return;
+    }
+
+    if (!amount) {
       setFundSufficient(true);
       return;
     }
+
     const timer = setTimeout(async () => {
       setCheckingFunds(true);
       try {
         const res = await checkFunds(currency, numAmt);
-        setFundSufficient(res.data?.sufficient !== false);
+        setFundSufficient(res.data?.sufficient === true);
       } catch (_) {
         setFundSufficient(true); // Don't block on network error
       } finally {
@@ -89,7 +97,7 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
     const e = {};
     if (!purpose.trim()) e.purpose = 'Purpose is required';
     if (!amount || isNaN(amount) || Number(amount) <= 0) {
-      e.amount = 'Enter a valid amount greater than 0';
+      e.amount = 'Amount must be greater than 0.00. Requests with an amount of 0 or less are not accepted.';
     }
 
     // Attachments are REQUIRED for Direct Expense
@@ -367,7 +375,18 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
             )}
           </div>
 
-          {!fundSufficient && (
+          {amount !== '' && (!amount || isNaN(Number(amount)) || Number(amount) <= 0) && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span>Amount must be greater than 0.00. Requests with an amount of 0 or less are not accepted.</span>
+            </div>
+          )}
+
+          {Number(amount) > 0 && !fundSufficient && (
             <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm flex items-center gap-2">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0">
                 <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
@@ -382,7 +401,7 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
             <button
               type="button"
               onClick={handleCreate}
-              disabled={submitting || !fundSufficient}
+              disabled={submitting || !amount || isNaN(Number(amount)) || Number(amount) <= 0 || !fundSufficient}
               className={`px-6 py-2.5 rounded-xl font-semibold text-sm text-white shadow-md transition-all disabled:opacity-50 ${
                 isDe
                   ? 'bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-700 hover:to-cyan-800'
@@ -391,6 +410,8 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
             >
               {submitting
                 ? 'Saving...'
+                : !amount || isNaN(Number(amount)) || Number(amount) <= 0
+                ? 'Enter Amount (> 0)'
                 : !fundSufficient
                 ? 'Insufficient Funds'
                 : isDe

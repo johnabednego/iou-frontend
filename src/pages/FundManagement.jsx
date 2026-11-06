@@ -86,15 +86,30 @@ export default function FundManagement() {
 
   async function handleUpdateBalance(e) {
     e.preventDefault();
-    if (!selectedCurrency || !amount || Number(amount) < 0) {
-      setError('Please select a currency and enter a valid amount');
+    const numAmount = Number(amount);
+    if (!selectedCurrency || amount === '' || isNaN(numAmount) || numAmount < 0) {
+      setError('Please select a currency and enter a valid non-negative amount');
       return;
     }
+
+    const curBal = balances.find(b => b.currency === selectedCurrency);
+    const currentAmount = curBal ? Number(curBal.available_amount) : 0;
+
+    if (action === 'set' && numAmount < 0) {
+      setError('Fund balance cannot be set to a negative value');
+      return;
+    }
+
+    if (action === 'decrease' && numAmount > currentAmount) {
+      setError(`Cannot decrease by ${numAmount}. Current balance is ${currentAmount} ${selectedCurrency}. Resulting balance cannot be negative.`);
+      return;
+    }
+
     setUpdating(true);
     setError('');
     setSuccess('');
     try {
-      const res = await updateFundBalance(selectedCurrency, { action, amount: Number(amount), notes });
+      const res = await updateFundBalance(selectedCurrency, { action, amount: numAmount, notes });
       setSuccess(`${selectedCurrency} balance updated: ${res.data?.balance?.previous_amount} → ${res.data?.balance?.new_amount}`);
       setAmount('');
       setNotes('');
