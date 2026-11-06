@@ -509,7 +509,14 @@ function InlineApprovalActions({ approvalId, onDecided }) {
 function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNames, onAssigned, deStatus, onStatusChanged }) {
   const occupied = (existingApprovals || []).filter(a => a.approval_type === 'direct_expense');
   const startStep = occupied.length + 1;
-  const [rows, setRows] = useState([{ approver_id: '', step_order: startStep, display_name: '' }]);
+  const initialRows = occupied.length === 0
+    ? [
+        { approver_id: '', step_order: 1, display_name: '' },
+        { approver_id: '', step_order: 2, display_name: '' }
+      ]
+    : [{ approver_id: '', step_order: startStep, display_name: '' }];
+
+  const [rows, setRows] = useState(initialRows);
   const [hodUsers, setHodUsers] = useState([]);
   const [managedApprovers, setManagedApprovers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -519,14 +526,23 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
   const [actionComments, setActionComments] = useState('');
   const [actioning, setActioning] = useState(false);
 
-  useEffect(() => { setRows([{ approver_id: '', step_order: startStep, display_name: '' }]); }, [startStep]);
+  useEffect(() => {
+    setRows(
+      occupied.length === 0
+        ? [
+            { approver_id: '', step_order: 1, display_name: '' },
+            { approver_id: '', step_order: 2, display_name: '' }
+          ]
+        : [{ approver_id: '', step_order: startStep, display_name: '' }]
+    );
+  }, [startStep, occupied.length]);
 
   useEffect(() => {
     async function loadEligible() {
       setLoadingUsers(true);
       try {
         const [hodRes, appRes] = await Promise.all([
-          getUsers({ role: 'hod', is_active: true, limit: 200 }),
+          getUsers({ role: 'hod', is_active: true, limit: 200, local_only: true }),
           listApproversApi()
         ]);
         setHodUsers(hodRes.data.data || []);
@@ -540,7 +556,7 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
   function removeRow(idx) {
     const remaining = rows.filter((_, i) => i !== idx);
     const recalc = remaining.map((r, i) => ({ ...r, step_order: startStep + i }));
-    setRows(recalc.length > 0 ? recalc : [{ approver_id: '', step_order: startStep, display_name: '' }]);
+    setRows(recalc);
   }
 
   function addRow() { setRows(s => [...s, { approver_id: '', step_order: startStep + s.length, display_name: '' }]); }
@@ -552,14 +568,18 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
       ...valid.map(r => ({ approver_id: r.approver_id, step_order: r.step_order }))
     ];
     if (allApprovers.length === 0) { toastify.error('Please select at least one approver'); return; }
+    if (allApprovers.length < 2) {
+      toastify.error('Direct Expense requests require a minimum of 2 approvers (1 Head of Department + at least 1 authorizer from the Approvers list)');
+      return;
+    }
     const ids = allApprovers.map(a => a.approver_id);
     if (new Set(ids).size !== ids.length) { toastify.error('Each approver can only be assigned once'); return; }
     setSubmitting(true);
     try {
       await assignDEApprovers(deId, allApprovers);
-      toastify.success('Approvers assigned!');
+      toastify.success('Approvers assigned successfully!');
       onAssigned?.();
-    } catch (err) { toastify.error(err?.response?.data?.message || 'Failed to assign'); }
+    } catch (err) { toastify.error(err?.response?.data?.message || 'Failed to assign approvers'); }
     finally { setSubmitting(false); }
   }
 
@@ -576,14 +596,29 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
   }
 
   const eligibleForStep = (stepIdx) => {
-    if (stepIdx === 0 && occupied.length === 0) return hodUsers.filter(u => u.id !== requesterId);
-    return [...managedApprovers, ...hodUsers].filter((u, i, arr) => arr.findIndex(x => x.id === u.id) === i && u.id !== requesterId);
+    const isStep1 = (stepIdx === 0 && occupied.length === 0);
+    const selectedInOtherRows = new Set(
+      rows
+        .filter((_, i) => i !== stepIdx)
+        .map(r => r.approver_id)
+        .concat(occupied.map(a => a.approver_id))
+        .filter(Boolean)
+    );
+
+    if (isStep1) {
+      // Step 1: Strictly HODs only
+      return hodUsers.filter(u => u.id !== requesterId && !selectedInOtherRows.has(u.id));
+    }
+    // Step 2+: Strictly managed Approvers list only (NOT HODs unless in Approvers list)
+    return managedApprovers.filter(u => u.id !== requesterId && !selectedInOtherRows.has(u.id));
   };
+
+  const minRowsAllowed = occupied.length === 0 ? 2 : 1;
 
   return (
     <Card title="Assign Approval Chain">
       <div className="p-3 rounded-xl bg-teal-50 border border-teal-200 text-sm text-teal-800 mb-4">
-        <strong>Note:</strong> The first approver must be a Head of Department (HOD). Subsequent approvers must be from the Approvers list, Finance, or Admin. <strong>Minimum 2 finance/authorizer approvers required.</strong>
+        <strong>Approval Chain Rules:</strong> The first approver must be your Head of Department (HOD). Subsequent approvers (step 2 onwards) must be selected from the managed Approvers list. <strong>Minimum 2 approvers required in total (1 HOD + at least 1 authorizer from Approvers list).</strong>
       </div>
 
       {/* Already assigned */}
@@ -609,17 +644,18 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
                 value={row.approver_id}
                 onChange={e => {
                   const sel = e.target.value;
-                  const nm = [...managedApprovers, ...hodUsers].find(u => u.id === sel);
+                  const pool = [...managedApprovers, ...hodUsers];
+                  const nm = pool.find(u => u.id === sel);
                   setRows(s => s.map((r, i) => i === idx ? { ...r, approver_id: sel, display_name: nm?.display_name || nm?.username || '' } : r));
                 }}
                 className="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white focus:ring-2 focus:ring-teal-200"
               >
-                <option value="">{idx === 0 && occupied.length === 0 ? '-- Select HOD --' : '-- Select Approver --'}</option>
+                <option value="">{idx === 0 && occupied.length === 0 ? '-- Select Head of Department (HOD) --' : '-- Select Approver (from Approvers List) --'}</option>
                 {eligibleForStep(idx).map(u => (
                   <option key={u.id} value={u.id}>{u.display_name || u.username} ({u.role}{u.department ? ` - ${u.department}` : ''})</option>
                 ))}
               </select>
-              {rows.length > 1 && <button onClick={() => removeRow(idx)} className="text-red-400 hover:text-red-600 text-lg">✕</button>}
+              {rows.length > minRowsAllowed && <button onClick={() => removeRow(idx)} className="text-red-400 hover:text-red-600 text-lg" title="Remove step">✕</button>}
             </div>
           ))}
 

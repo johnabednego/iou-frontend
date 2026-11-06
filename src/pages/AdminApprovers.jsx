@@ -10,8 +10,9 @@ export default function AdminApprovers() {
 
   // Add Approver Modal state
   const [showAddModal, setShowAddModal] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [loadingAllUsers, setLoadingAllUsers] = useState(false);
   const [userSearchQ, setUserSearchQ] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -21,6 +22,7 @@ export default function AdminApprovers() {
 
   useEffect(() => {
     fetchApprovers();
+    fetchSystemUsers();
   }, []);
 
   async function fetchApprovers() {
@@ -36,26 +38,45 @@ export default function AdminApprovers() {
     }
   }
 
-  // Handle user search in Add Approver modal
-  useEffect(() => {
-    if (!userSearchQ || userSearchQ.length < 2) {
-      setSearchResults([]);
+  async function fetchSystemUsers() {
+    setLoadingAllUsers(true);
+    try {
+      const res = await getUsers({ limit: 1000, is_active: true, local_only: true });
+      setAllUsers(res.data.data || []);
+    } catch (err) {
+      console.error('Failed to load system users', err);
+    } finally {
+      setLoadingAllUsers(false);
+    }
+  }
+
+  // Search LDAP on-demand for users not yet synced to local DB
+  async function handleLdapSearch() {
+    if (!userSearchQ || userSearchQ.trim().length < 2) {
+      toast.info('Enter at least 2 characters to search directory');
       return;
     }
-    const t = setTimeout(async () => {
-      setSearchLoading(true);
-      try {
-        const res = await getUsers({ search: userSearchQ, limit: 15 });
-        const existingIds = new Set(approvers.map(a => a.id));
-        setSearchResults((res.data.data || []).filter(u => !existingIds.has(u.id)));
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setSearchLoading(false);
+    setSearchLoading(true);
+    try {
+      const res = await getUsers({ search: userSearchQ.trim(), limit: 20 });
+      const found = res.data.data || [];
+      if (found.length === 0) {
+        toast.info(`No directory users found matching "${userSearchQ}"`);
+      } else {
+        setAllUsers(prev => {
+          const map = new Map(prev.map(u => [u.id, u]));
+          found.forEach(u => map.set(u.id, u));
+          return Array.from(map.values());
+        });
+        toast.success(`Found ${found.length} matching user(s) from directory`);
       }
-    }, 250);
-    return () => clearTimeout(t);
-  }, [userSearchQ, approvers]);
+    } catch (err) {
+      console.error(err);
+      toast.error('Directory search failed');
+    } finally {
+      setSearchLoading(false);
+    }
+  }
 
   async function handleAddApprover() {
     if (!selectedUser) {
@@ -70,6 +91,7 @@ export default function AdminApprovers() {
       setSelectedUser(null);
       setUserSearchQ('');
       fetchApprovers();
+      fetchSystemUsers();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Failed to add approver');
     } finally {
@@ -89,6 +111,20 @@ export default function AdminApprovers() {
       setRemovingId(null);
     }
   }
+
+  const approverIds = new Set(approvers.map(a => a.id));
+  const eligibleUsers = allUsers.filter(u => !approverIds.has(u.id));
+
+  const filteredEligible = eligibleUsers.filter(u => {
+    if (!userSearchQ.trim()) return true;
+    const q = userSearchQ.toLowerCase();
+    return (
+      (u.display_name && u.display_name.toLowerCase().includes(q)) ||
+      (u.username && u.username.toLowerCase().includes(q)) ||
+      (u.email && u.email.toLowerCase().includes(q)) ||
+      (u.department && u.department.toLowerCase().includes(q))
+    );
+  });
 
   const filteredApprovers = approvers.filter(a => {
     const q = search.toLowerCase();
@@ -117,8 +153,8 @@ export default function AdminApprovers() {
           onClick={() => {
             setSelectedUser(null);
             setUserSearchQ('');
-            setSearchResults([]);
             setShowAddModal(true);
+            fetchSystemUsers();
           }}
           className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center gap-2 self-start sm:self-auto"
         >
@@ -278,7 +314,12 @@ export default function AdminApprovers() {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-bold text-slate-800">Add User to Approvers List</h3>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Add User to Approvers List</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Grant authorization privileges to approve IOU or Direct Expense requests.
+                </p>
+              </div>
               <button
                 onClick={() => setShowAddModal(false)}
                 className="text-slate-400 hover:text-slate-600 text-xl font-bold"
@@ -287,58 +328,137 @@ export default function AdminApprovers() {
               </button>
             </div>
 
-            <p className="text-sm text-slate-600">
-              Search for any active user by name, email, or username to grant them authorization privileges.
-            </p>
-
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Type to search users (LDAP & Local)..."
-                value={userSearchQ}
-                onChange={(e) => {
-                  setUserSearchQ(e.target.value);
-                  setSelectedUser(null);
-                }}
-                className="w-full px-4 py-2.5 text-sm rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200"
-              />
-              {searchLoading && (
-                <div className="absolute right-3 top-3 text-xs text-slate-400">Searching...</div>
-              )}
+            {/* Search / Filter Input */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700">Find User</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Type to filter by name, username, department, or email..."
+                  value={userSearchQ}
+                  onChange={(e) => {
+                    setUserSearchQ(e.target.value);
+                    setSelectedUser(null);
+                  }}
+                  className="w-full pl-9 pr-24 py-2.5 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white"
+                  autoFocus
+                />
+                <svg
+                  className="w-4 h-4 text-slate-400 absolute left-3 top-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <circle cx="11" cy="11" r="8" strokeWidth="2" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" strokeWidth="2" />
+                </svg>
+                {userSearchQ && (
+                  <button
+                    onClick={() => {
+                      setUserSearchQ('');
+                      setSelectedUser(null);
+                    }}
+                    className="absolute right-2.5 top-2.5 text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* Search Results Dropdown / List */}
-            {searchResults.length > 0 && !selectedUser && (
-              <div className="max-h-48 overflow-y-auto border border-slate-100 rounded-lg divide-y divide-slate-100">
-                {searchResults.map(u => (
-                  <div
-                    key={u.id}
-                    onClick={() => setSelectedUser(u)}
-                    className="p-3 hover:bg-blue-50 cursor-pointer transition flex items-center justify-between text-sm"
-                  >
-                    <div>
-                      <div className="font-semibold text-slate-800">{u.display_name || u.username}</div>
-                      <div className="text-xs text-slate-500">{u.email || u.username} {u.department ? `(${u.department})` : ''}</div>
-                    </div>
-                    <span className="text-xs font-semibold text-blue-600">Select</span>
+            {/* Eligible Users Selection List */}
+            {!selectedUser && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+                  <span>
+                    {loadingAllUsers ? 'Loading users...' : `Showing ${filteredEligible.length} eligible user(s)`}
+                  </span>
+                  {userSearchQ.trim().length >= 2 && (
+                    <button
+                      type="button"
+                      onClick={handleLdapSearch}
+                      disabled={searchLoading}
+                      className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-xs flex items-center gap-1"
+                    >
+                      {searchLoading ? 'Searching LDAP...' : 'Search directory (LDAP)'}
+                    </button>
+                  )}
+                </div>
+
+                {loadingAllUsers ? (
+                  <div className="space-y-2 py-4">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="h-12 bg-slate-50 rounded-xl animate-pulse" />
+                    ))}
                   </div>
-                ))}
+                ) : filteredEligible.length === 0 ? (
+                  <div className="p-6 text-center border border-dashed border-slate-200 rounded-xl bg-slate-50 space-y-2">
+                    <p className="text-sm font-medium text-slate-600">No matching non-approver users found.</p>
+                    {userSearchQ ? (
+                      <button
+                        onClick={handleLdapSearch}
+                        disabled={searchLoading}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                      >
+                        {searchLoading ? 'Searching LDAP...' : `Search LDAP for "${userSearchQ}"`}
+                      </button>
+                    ) : (
+                      <p className="text-xs text-slate-400">All available active users are already approvers.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="max-h-56 overflow-y-auto border border-slate-100 rounded-xl divide-y divide-slate-100 bg-slate-50/40">
+                    {filteredEligible.map(u => {
+                      const uInitials = (u.display_name || u.username || 'U')
+                        .split(' ')
+                        .map(n => n[0])
+                        .slice(0, 2)
+                        .join('')
+                        .toUpperCase();
+
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => setSelectedUser(u)}
+                          className="p-3 hover:bg-blue-50/80 cursor-pointer transition flex items-center justify-between text-sm group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-slate-200 group-hover:bg-blue-600 group-hover:text-white text-slate-700 flex items-center justify-center font-bold text-xs shrink-0 transition-colors">
+                              {uInitials}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-semibold text-slate-800 truncate">{u.display_name || u.username}</div>
+                              <div className="text-xs text-slate-400 truncate">
+                                {u.email || u.username} {u.department ? `• ${u.department}` : ''}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-xs font-semibold text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                            Select →
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
             {/* Selected User Banner */}
             {selectedUser && (
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between">
+              <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">Selected User</div>
-                  <div className="font-bold text-slate-800">{selectedUser.display_name || selectedUser.username}</div>
-                  <div className="text-xs text-slate-500">{selectedUser.email} • {selectedUser.department || 'No Dept'}</div>
+                  <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Ready to Add</div>
+                  <div className="font-bold text-slate-800 text-base mt-0.5">{selectedUser.display_name || selectedUser.username}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    {selectedUser.email || selectedUser.username} • {selectedUser.department || 'No Dept'}
+                  </div>
                 </div>
                 <button
                   onClick={() => setSelectedUser(null)}
-                  className="text-xs text-red-500 hover:underline font-semibold"
+                  className="px-3 py-1.5 rounded-lg border border-emerald-300 text-xs text-emerald-800 font-semibold hover:bg-emerald-100 transition-colors"
                 >
-                  Change
+                  Change User
                 </button>
               </div>
             )}
@@ -346,14 +466,14 @@ export default function AdminApprovers() {
             <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleAddApprover}
                 disabled={!selectedUser || adding}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-700 text-white text-sm font-semibold hover:shadow-md disabled:opacity-50 transition-all"
               >
                 {adding ? 'Adding...' : 'Confirm & Add Approver'}
               </button>

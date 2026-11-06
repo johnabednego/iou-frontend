@@ -3,7 +3,7 @@ import { getUsers, updateUserRole, updateUser, addUserByEmail, getDepartments } 
 import Card from '../components/ui/Card';
 import { toast } from 'react-toastify';
 
-const ROLES = ['employee', 'hod', 'cashier', 'authorizer'];
+const ROLES = ['employee', 'cashier', 'authorizer'];
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([]);
@@ -249,9 +249,10 @@ export default function AdminUsers() {
               className="px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200"
             >
               <option value="">All Roles</option>
-              {ROLES.map(r => (
-                <option key={r} value={r}>{r === 'hod' ? 'Head of Dept (HOD)' : r.charAt(0).toUpperCase() + r.slice(1)}</option>
-              ))}
+              <option value="employee">Employee</option>
+              <option value="hod">Head of Dept (HOD)</option>
+              <option value="cashier">Cashier</option>
+              <option value="authorizer">Authorizer</option>
             </select>
 
             {(search || roleFilter || deptFilter) && (
@@ -344,26 +345,34 @@ export default function AdminUsers() {
                         </select>
                       </td>
                       <td className="py-3 px-3 text-center">
-                        <select
-                          value={u.role || 'employee'}
-                          onChange={e => handleRoleChange(u.id, e.target.value)}
-                          disabled={saving === u.id}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                            u.role === 'hod'
-                              ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                              : u.role === 'cashier'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : u.role === 'authorizer'
-                              ? 'bg-purple-50 text-purple-700 border-purple-200'
-                              : 'bg-slate-50 text-slate-700 border-slate-200'
-                          }`}
-                        >
-                          {ROLES.map(r => (
-                            <option key={r} value={r}>
-                              {r === 'hod' ? 'HOD' : r.charAt(0).toUpperCase() + r.slice(1)}
-                            </option>
-                          ))}
-                        </select>
+                        {u.role === 'hod' ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200"
+                            title="Head of Department role is managed via Department Management"
+                          >
+                            <span>HOD</span>
+                            <span className="text-[10px] text-indigo-400 font-normal">(Dept Head)</span>
+                          </span>
+                        ) : (
+                          <select
+                            value={u.role || 'employee'}
+                            onChange={e => handleRoleChange(u.id, e.target.value)}
+                            disabled={saving === u.id}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                              u.role === 'cashier'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : u.role === 'authorizer'
+                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                : 'bg-slate-50 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            {ROLES.map(r => (
+                              <option key={r} value={r}>
+                                {r.charAt(0).toUpperCase() + r.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-center">
                         <label className={`relative inline-flex items-center cursor-pointer ${saving === u.id ? 'opacity-50 cursor-not-allowed' : ''}`}>
