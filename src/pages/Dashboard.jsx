@@ -520,12 +520,20 @@ export default function Dashboard() {
               Here's your IOU overview {filtersApplied ? '(filtered)' : 'for today'}.
             </p>
           </div>
-          <Link
-            to="/ious/create"
-            className="px-5 py-2.5 rounded-xl bg-white/15 backdrop-blur-sm border border-white/25 text-white hover:text-white hover:text-opacity-50  text-sm font-semibold hover:bg-white/25 transition-all shadow-sm flex items-center gap-2"
-          >
-            + New Request
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              to="/ious/create"
+              className="px-5 py-2.5 rounded-xl bg-white/15 backdrop-blur-sm border border-white/25 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold hover:bg-white/25 transition-all shadow-sm flex items-center gap-2"
+            >
+              + New IOU
+            </Link>
+            <Link
+              to="/direct-expenses/create"
+              className="px-5 py-2.5 rounded-xl bg-teal-500/30 backdrop-blur-sm border border-teal-300/40 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold hover:bg-teal-500/40 transition-all shadow-sm flex items-center gap-2"
+            >
+              + Direct Expense
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -619,6 +627,117 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {/* === Direct Expense KPI Cards === */}
+      {analytics && (analytics.deStatusDistribution || analytics.dePendingTotal != null) && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-1 h-5 rounded-full bg-gradient-to-b from-teal-500 to-cyan-600" />
+            <h2 className="text-lg font-bold text-slate-800">Direct Expenses</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total DE */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full group-hover:scale-110 transition-transform" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-white/10">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-medium text-teal-100 uppercase tracking-wider">Total Direct Expenses</span>
+                </div>
+                <div className="text-3xl font-extrabold text-white">
+                  {analytics.deStatusDistribution ? analytics.deStatusDistribution.reduce((sum, s) => sum + (s.count || 0), 0) : 0}
+                </div>
+                <div className="text-xs text-teal-100 mt-1">All direct expense requests</div>
+              </div>
+            </div>
+
+            {/* DE Pending */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-white/15">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">DE Pending</span>
+                </div>
+                <div className="text-3xl font-extrabold text-white">{analytics.dePendingTotal ?? 0}</div>
+                <div className="text-xs text-amber-100 mt-1">Awaiting approval</div>
+              </div>
+            </div>
+
+            {/* DE Completed */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-green-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="p-2 rounded-lg bg-white/15">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">DE Completed</span>
+                </div>
+                <div className="text-3xl font-extrabold text-white">
+                  {analytics.deStatusDistribution ? (analytics.deStatusDistribution.find(s => s.status === 'COMPLETED')?.count || 0) : 0}
+                </div>
+                <div className="text-xs text-emerald-100 mt-1">Fully disbursed & confirmed</div>
+              </div>
+            </div>
+
+            {/* DE Amount Spent per Currency */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+              <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
+              <div className="relative z-10">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 rounded-lg bg-white/15">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-medium text-cyan-100 uppercase tracking-wider">DE Amount Spent</span>
+                </div>
+                <div className="space-y-1 max-h-[72px] overflow-y-auto pr-1">
+                  {(() => {
+                    // Build DE currency entries matching IOU pattern: show all active currencies even if 0
+                    const deCurrMap = {};
+                    if (analytics.deCurrencySummary) {
+                      analytics.deCurrencySummary.forEach(cs => { deCurrMap[cs.currency] = Number(cs.total_amount) || 0; });
+                    }
+                    const codeSet = new Set();
+                    if (currencies && currencies.length > 0) {
+                      currencies.filter(c => c.is_active).forEach(c => codeSet.add(c.code));
+                    } else {
+                      ['GHS', 'USD', 'EUR', 'GBP'].forEach(c => codeSet.add(c));
+                    }
+                    Object.keys(deCurrMap).forEach(c => codeSet.add(c));
+                    const order = ['GHS', 'USD', 'EUR', 'GBP'];
+                    const entries = [...codeSet].sort((a, b) => {
+                      const idxA = order.indexOf(a); const idxB = order.indexOf(b);
+                      if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+                      if (idxA !== -1) return -1; if (idxB !== -1) return 1;
+                      return a.localeCompare(b);
+                    });
+                    return entries.map(cur => (
+                      <div key={cur} className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-cyan-200 bg-white/10 px-1.5 py-0.5 rounded">{cur}</span>
+                        <span className="text-sm font-bold text-white">{formatCurrency(deCurrMap[cur] || 0, cur)}</span>
+                      </div>
+                    ));
+                  })()}
+                </div>
+                <div className="text-xs text-cyan-200 mt-1">{approvedLabel.replace('Amount spent', 'DE amount spent')}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* === Fund Balances - Privileged Only === */}
       {canSeeAll && fundBalances.length > 0 && (
         <section>
@@ -665,7 +784,7 @@ export default function Dashboard() {
         <section className="space-y-5">
           <div className="flex items-center gap-2">
             <div className="w-1 h-5 rounded-full bg-gradient-to-b from-indigo-500 to-blue-600" />
-            <h2 className="text-lg font-bold text-slate-800">Analytics & Insights</h2>
+            <h2 className="text-lg font-bold text-slate-800">IOU Analytics & Insights</h2>
           </div>
 
           {/* Row 1: Monthly IOUs + Spending Pie */}
@@ -688,7 +807,7 @@ export default function Dashboard() {
                 <div className="relative z-10">
                   <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-purple-400 shadow-[0_0_8px_rgba(192,132,252,0.8)]" />
-                    <span>Spending Breakdown</span>
+                    <span>IOU Spending Breakdown</span>
                   </div>
                   <SpendingPieChart data={analytics.spendingBreakdown} />
                 </div>
@@ -746,6 +865,122 @@ export default function Dashboard() {
                   <span>Department Distribution</span>
                 </div>
                 <DepartmentIOUChart data={analytics.departmentBreakdown} />
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* === Direct Expense Charts Section === */}
+      {analytics && canSeeAnalytics && (analytics.deByMonth || analytics.deStatusDistribution) && (
+        <section className="space-y-5">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-5 rounded-full bg-gradient-to-b from-teal-500 to-cyan-600" />
+            <h2 className="text-lg font-bold text-slate-800">Direct Expense Analytics</h2>
+          </div>
+
+          {/* DE Row 1: Monthly DE + DE Status Distribution */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {analytics.deByMonth && analytics.deByMonth.length > 0 && (
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f172a] via-[#134e4a] to-[#0f172a] border border-teal-500/30 shadow-xl p-6 group">
+                <div className="absolute -right-8 -top-8 w-32 h-32 bg-teal-500/10 rounded-full group-hover:scale-110 transition-transform pointer-events-none blur-xl" />
+                <div className="relative z-10">
+                  <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
+                    <span>Direct Expenses by Month (Last 12 Months)</span>
+                  </div>
+                  <MonthlyIOUChart data={analytics.deByMonth} />
+                </div>
+              </div>
+            )}
+            {analytics.deStatusDistribution && analytics.deStatusDistribution.length > 0 && (
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f172a] via-[#164e63] to-[#0f172a] border border-cyan-500/30 shadow-xl p-6 group">
+                <div className="absolute -right-8 -top-8 w-32 h-32 bg-cyan-500/10 rounded-full group-hover:scale-110 transition-transform pointer-events-none blur-xl" />
+                <div className="relative z-10">
+                  <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                    <span>DE Status Distribution</span>
+                  </div>
+                  <StatusDistributionChart data={analytics.deStatusDistribution} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* DE Row 2: DE Approved Amounts by Currency */}
+          {analytics.deApprovedAmounts && (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f172a] via-[#134e4a] to-[#0f172a] border border-teal-500/30 shadow-xl p-6 group">
+              <div className="absolute -right-8 -top-8 w-32 h-32 bg-teal-500/10 rounded-full group-hover:scale-110 transition-transform pointer-events-none blur-xl" />
+              <div className="relative z-10">
+                <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
+                  <span>DE Amount Spent by Currency</span>
+                </div>
+                <ApprovedAmountsChart
+                  amounts={analytics.deApprovedAmounts}
+                  monthlyChart={analytics.deMonthlyApprovedChart}
+                  currencies={currencies}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* DE Row 3: DE Department Distribution */}
+          {analytics.deDepartmentBreakdown && analytics.deDepartmentBreakdown.length > 0 && (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f172a] via-[#115e59] to-[#0f172a] border border-teal-500/30 shadow-xl p-6 group">
+              <div className="absolute -right-8 -top-8 w-32 h-32 bg-teal-500/10 rounded-full group-hover:scale-110 transition-transform pointer-events-none blur-xl" />
+              <div className="relative z-10">
+                <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
+                  <span>DE Department Distribution</span>
+                </div>
+                <DepartmentIOUChart data={analytics.deDepartmentBreakdown} />
+              </div>
+            </div>
+          )}
+
+          {/* IOU vs Direct Expense Comparison */}
+          {analytics.iousByMonth && analytics.deByMonth && (
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0f172a] via-[#1e1b4b] to-[#0f172a] border border-indigo-500/30 shadow-xl p-6 group">
+              <div className="absolute -right-8 -top-8 w-32 h-32 bg-indigo-500/10 rounded-full group-hover:scale-110 transition-transform pointer-events-none blur-xl" />
+              <div className="relative z-10">
+                <div className="text-sm font-bold text-white mb-4 flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.8)]" />
+                  <span>IOU vs Direct Expense - Monthly Comparison</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-slate-400 text-xs uppercase border-b border-white/10">
+                        <th className="text-left py-2 font-medium">Month</th>
+                        <th className="text-right py-2 font-medium text-blue-400">IOU Count</th>
+                        <th className="text-right py-2 font-medium text-teal-400">DE Count</th>
+                        <th className="text-right py-2 font-medium text-purple-400">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analytics.iousByMonth.map((iouMonth, idx) => {
+                        const deMonth = analytics.deByMonth[idx] || {};
+                        const iouCount = iouMonth.count || 0;
+                        const deCount = deMonth.count || 0;
+                        return (
+                          <tr key={iouMonth.month || idx} className="border-t border-white/5 hover:bg-white/5 transition-colors">
+                            <td className="py-2 text-slate-300 font-medium">{iouMonth.month || deMonth.month || '-'}</td>
+                            <td className="py-2 text-right">
+                              <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold text-xs">{iouCount}</span>
+                            </td>
+                            <td className="py-2 text-right">
+                              <span className="px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 font-bold text-xs">{deCount}</span>
+                            </td>
+                            <td className="py-2 text-right">
+                              <span className="font-bold text-white text-xs">{iouCount + deCount}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -889,7 +1124,10 @@ export default function Dashboard() {
             <div className="text-sm font-bold text-slate-700 mb-3">Quick Actions</div>
             <div className="flex flex-wrap gap-3">
               <Link to="/ious/create" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-700 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold shadow-sm hover:shadow-md transition-all">
-                + New Request
+                + New IOU Request
+              </Link>
+              <Link to="/direct-expenses/create" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-700 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold shadow-sm hover:shadow-md transition-all">
+                + New Direct Expense
               </Link>
               <Link to="/approvals" className="px-5 py-2.5 rounded-xl bg-white border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition-all">
                 My Approvals
@@ -1005,17 +1243,27 @@ export default function Dashboard() {
                 <div className="text-sm">No pending approvals</div>
               </div>
             ) :
-              approvals.slice(0, 6).map(a => (
-                <div key={a.id} className="flex items-start justify-between p-3 rounded-xl border border-slate-100 bg-white/50 mb-2 hover:bg-white/70 transition-colors">
-                  <div>
-                    <div className="font-medium text-sm">IOU: <Link to={`/ious/${a.iou_id}`} className="text-emerald-600 hover:underline font-semibold">{a.iou?.request_number || a.iou_id}</Link></div>
-                    <div className="text-xs text-slate-400 mt-0.5">Step {a.step_order} &bull; {shortDate(a.created_at)}</div>
+              approvals.slice(0, 6).map(a => {
+                const isDE = a.approval_type === 'direct_expense';
+                const entity = isDE ? a.directExpense : a.iou;
+                const linkTo = isDE ? `/direct-expenses/${a.direct_expense_id}` : `/ious/${a.iou_id}`;
+                const typeLabel = isDE ? 'DE' : a.approval_type === 'expense' ? 'Expense' : 'IOU';
+                const dotColor = isDE ? 'bg-teal-500' : a.approval_type === 'expense' ? 'bg-purple-500' : 'bg-emerald-500';
+                return (
+                  <div key={a.id} className="flex items-start justify-between p-3 rounded-xl border border-slate-100 bg-white/50 mb-2 hover:bg-white/70 transition-colors">
+                    <div>
+                      <div className="font-medium text-sm flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+                        {typeLabel}: <Link to={linkTo} className="text-emerald-600 hover:underline font-semibold">{entity?.request_number || (isDE ? a.direct_expense_id : a.iou_id)}</Link>
+                      </div>
+                      <div className="text-xs text-slate-400 mt-0.5">Step {a.step_order} &bull; {shortDate(a.created_at)}</div>
+                    </div>
+                    <button onClick={() => nav(linkTo)} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors shadow-sm">
+                      Review
+                    </button>
                   </div>
-                  <button onClick={() => nav(`/ious/${a.iou_id}`)} className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition-colors shadow-sm">
-                    Review
-                  </button>
-                </div>
-              ))
+                );
+              })
             }
           </div>
 

@@ -95,3 +95,17 @@ export const getFundTransactions = (params) => api.get('/funds/transactions', { 
 
 // Analytics
 export const getDashboardAnalytics = (params) => api.get('/analytics/dashboard', { params });
+
+// ─── Direct Expense ───
+export const createDirectExpense = (data) => api.post('/direct-expenses', data);
+export const listDirectExpenses = (params) => api.get('/direct-expenses', { params });
+export const getDirectExpense = (id) => api.get(`/direct-expenses/${id}`);
+export const updateDirectExpense = (id, data) => api.put(`/direct-expenses/${id}`, data);
+export const submitDirectExpense = (id) => api.post(`/direct-expenses/${id}/submit`);
+export const assignDEApprovers = (id, approvers) => api.post(`/direct-expenses/${id}/assign-approvers`, { approvers });
+export const confirmDEApproval = (id) => api.post(`/direct-expenses/${id}/confirm-approval`);
+export const disburseDERequest = (id, data) => api.post(`/direct-expenses/${id}/disburse`, data);
+export const confirmDEDisbursement = (id) => api.post(`/direct-expenses/${id}/confirm-disbursement`);
+export const getDEDisbursements = (id) => api.get(`/direct-expenses/${id}/disbursements`);
+export const cashierRejectDE = (id, data) => api.post(`/direct-expenses/${id}/cashier-reject`, data);
+export const cashierReturnDE = (id, data) => api.post(`/direct-expenses/${id}/cashier-return`, data);

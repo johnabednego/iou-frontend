@@ -34,7 +34,7 @@ export function AuthProvider({ children }) {
           }
         } catch (err) {
           console.error('SSO login failed:', err?.response?.data?.message || err.message);
-          // SSO failed — fall through to normal session check or show login
+          // SSO failed - fall through to normal session check or show login
         } finally {
           ssoInProgress.current = false;
           setLoading(false);
@@ -56,7 +56,7 @@ export function AuthProvider({ children }) {
   async function login(username, password) {
     // backend LDAP login: /auth/login
     const res = await api.post('/auth/login', { username, password });
-    // Direct login — clear any SSO origin flag
+    // Direct login - clear any SSO origin flag
     sessionStorage.removeItem('sso_origin');
     // fetch DB user
     const me = await api.get('/users/me');
@@ -82,7 +82,7 @@ export function AuthProvider({ children }) {
       }
     }
 
-    // Direct login user — stay on IOU login page
+    // Direct login user - stay on IOU login page
     nav('/login');
   }
 

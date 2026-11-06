@@ -896,7 +896,7 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
                       const isMatch = isStep1 && requesterDepartment && (u.department || '').trim().toLowerCase() === requesterDepartment.trim().toLowerCase();
                       return (
                         <option key={u.id} value={u.id}>
-                          {isMatch ? '★ ' : ''}{u.display_name || u.username} {u.department ? `(${u.department})` : ''} {isMatch ? '— Department HOD' : ''}
+                          {isMatch ? '★ ' : ''}{u.display_name || u.username} {u.department ? `(${u.department})` : ''} {isMatch ? '- Department HOD' : ''}
                         </option>
                       );
                     })}

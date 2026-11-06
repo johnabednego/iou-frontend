@@ -474,7 +474,7 @@ export default function RedeemedRequests() {
                       {spendingLabel ? (
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${spendingClass}`}>{spendingLabel}</span>
                       ) : (
-                        <span className="text-xs text-slate-400">—</span>
+                        <span className="text-xs text-slate-400">-</span>
                       )}
                     </td>
                     <td className="py-3 px-3 text-right text-slate-500 text-xs">

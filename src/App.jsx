@@ -15,6 +15,9 @@ import RedeemedRequests from './pages/RedeemedRequests';
 import Settings from './pages/Settings';
 import FundManagement from './pages/FundManagement';
 import AdminDepartments from './pages/AdminDepartments';
+import DirectExpenseList from './pages/DirectExpenseList';
+import DirectExpenseCreate from './pages/DirectExpenseCreate';
+import DirectExpenseDetail from './pages/DirectExpenseDetail';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleProtected from './components/RoleProtected';
 
@@ -32,6 +35,9 @@ export default function App(){
         <Route path="ious" element={<IOUList />} />
         <Route path="ious/create" element={<IOUCreate />} />
         <Route path="ious/:id" element={<IOUDetail />} />
+        <Route path="direct-expenses" element={<DirectExpenseList />} />
+        <Route path="direct-expenses/create" element={<DirectExpenseCreate />} />
+        <Route path="direct-expenses/:id" element={<DirectExpenseDetail />} />
         <Route path="approvals" element={
           <RoleProtected roles={['cashier', 'hod', 'authorizer']} allowApprover={true}>
             <Approvals />
