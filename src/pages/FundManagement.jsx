@@ -22,12 +22,12 @@ function formatCurrency(n, currency = 'GHS') {
 }
 
 const TX_TYPE_BADGES = {
-  MANUAL_SET: { label: 'Set', cls: 'bg-blue-100 text-blue-700' },
+  MANUAL_SET: { label: 'Set Balance', cls: 'bg-blue-100 text-blue-700' },
   MANUAL_CREDIT: { label: 'Credit', cls: 'bg-emerald-100 text-emerald-700' },
   MANUAL_DEBIT: { label: 'Debit', cls: 'bg-orange-100 text-orange-700' },
   DISBURSEMENT_DEBIT: { label: 'Disbursement', cls: 'bg-red-100 text-red-700' },
-  RECONCILIATION_DEBIT: { label: 'Reconciliation', cls: 'bg-red-100 text-red-700' },
-  RECONCILIATION_CREDIT: { label: 'Reconciliation', cls: 'bg-emerald-100 text-emerald-700' },
+  RECONCILIATION_DEBIT: { label: 'Recon (Overspent)', cls: 'bg-red-100 text-red-700' },
+  RECONCILIATION_CREDIT: { label: 'Recon (Refund)', cls: 'bg-emerald-100 text-emerald-700' },
   RECONCILIATION_ADJUSTMENT: { label: 'Reconciliation', cls: 'bg-purple-100 text-purple-700' }
 };
 
@@ -422,46 +422,50 @@ export default function FundManagement() {
         {transactions.length === 0 ? (
           <div className="text-center text-slate-400 py-6 text-sm">No transactions found</div>
         ) : (
-          <div className="overflow-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-slate-500 text-xs uppercase">
+          <div className="overflow-auto rounded-lg border border-slate-200">
+            <table className="min-w-full text-sm divide-y divide-slate-200">
+              <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="text-left py-2">Date</th>
-                  <th className="text-left py-2">Currency</th>
-                  <th className="text-left py-2">Type</th>
-                  <th className="text-right py-2">Amount</th>
-                  <th className="text-right py-2">Balance After</th>
-                  <th className="text-left py-2">By</th>
-                  <th className="text-left py-2">Notes</th>
+                  <th className="text-left py-3 px-4 font-semibold whitespace-nowrap">Date</th>
+                  <th className="text-left py-3 px-3 font-semibold whitespace-nowrap">Currency</th>
+                  <th className="text-left py-3 px-3 font-semibold whitespace-nowrap">Type</th>
+                  <th className="text-right py-3 px-4 font-semibold whitespace-nowrap">Amount</th>
+                  <th className="text-right py-3 px-4 font-semibold whitespace-nowrap">Balance After</th>
+                  <th className="text-left py-3 px-4 font-semibold whitespace-nowrap">Performed By</th>
+                  <th className="text-left py-3 px-4 font-semibold whitespace-nowrap">Notes</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {transactions.map(tx => {
                   const badge = TX_TYPE_BADGES[tx.type] || { label: tx.type, cls: 'bg-slate-100 text-slate-600' };
-                  const isDebit = tx.type.includes('DEBIT') || tx.type === 'MANUAL_SET';
+                  const isDebit = tx.type.includes('DEBIT');
+                  const isSet = tx.type === 'MANUAL_SET';
+                  const amountPrefix = isSet ? '' : isDebit ? '-' : '+';
+                  const amountColor = isSet ? 'text-blue-600' : isDebit ? 'text-red-600' : 'text-emerald-600';
                   return (
-                    <tr key={tx.id} className="border-t hover:bg-slate-50">
-                      <td className="py-2 text-xs text-slate-500">
-                        {new Date(tx.created_at).toLocaleDateString()} {new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap">
+                        {new Date(tx.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}{' '}
+                        <span className="text-slate-400">{new Date(tx.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </td>
-                      <td className="py-2">
-                        <span className="text-xs font-semibold" style={{ color: CURRENCY_COLORS[tx.currency] || '#6366f1' }}>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ backgroundColor: (CURRENCY_COLORS[tx.currency] || '#6366f1') + '15', color: CURRENCY_COLORS[tx.currency] || '#6366f1' }}>
                           {tx.currency}
                         </span>
                       </td>
-                      <td className="py-2">
-                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.label}</span>
                       </td>
-                      <td className={`py-2 text-right font-medium ${isDebit ? 'text-red-600' : 'text-emerald-600'}`}>
-                        {isDebit ? '-' : '+'}{formatCurrency(tx.amount, tx.currency)}
+                      <td className={`py-3 px-4 text-right font-medium whitespace-nowrap ${amountColor}`}>
+                        {amountPrefix}{formatCurrency(tx.amount, tx.currency)}
                       </td>
-                      <td className="py-2 text-right font-medium text-slate-700">
+                      <td className="py-3 px-4 text-right font-semibold text-slate-800 whitespace-nowrap">
                         {formatCurrency(tx.balance_after, tx.currency)}
                       </td>
-                      <td className="py-2 text-xs text-slate-500">
+                      <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap">
                         {tx.performer?.display_name || tx.performer?.username || '-'}
                       </td>
-                      <td className="py-2 text-xs text-slate-400 max-w-[200px] truncate" title={tx.notes}>
+                      <td className="py-3 px-4 text-xs text-slate-500 max-w-[260px] truncate" title={tx.notes}>
                         {tx.notes || '-'}
                       </td>
                     </tr>
