@@ -95,11 +95,11 @@ export default function RedeemedRequests() {
 
       const [iouRes, deRes] = await Promise.all([
         listIOUs(iouParams).catch(err => { console.error('Failed to fetch IOUs', err); return { data: { data: [] } }; }),
-        listDirectExpenses(deParams).catch(err => { console.error('Failed to fetch DEs', err); return { data: { directExpenses: [] } }; })
+        listDirectExpenses(deParams).catch(err => { console.error('Failed to fetch DEs', err); return { data: { data: [] } }; })
       ]);
 
       setIous(iouRes.data?.data || []);
-      setDirectExpenses(deRes.data?.directExpenses || []);
+      setDirectExpenses(deRes.data?.data || deRes.data?.directExpenses || []);
     } catch (err) {
       console.error('Failed to fetch settled requests', err);
     } finally {
@@ -138,11 +138,11 @@ export default function RedeemedRequests() {
     return combined.sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [ious, directExpenses, typeFilter, spendingFilter]);
 
-  // Export handler (exports IOUs)
+  // Export handler (exports settled requests: IOUs and Direct Expenses)
   async function handleExport() {
     setExportMsg('');
-    if (ious.length === 0) {
-      setExportMsg('ℹ️ There are no redeemed IOUs matching the current filters to export.');
+    if (allItems.length === 0) {
+      setExportMsg('ℹ️ There are no settled requests matching the current filters to export.');
       return;
     }
     setExporting(true);
@@ -160,7 +160,7 @@ export default function RedeemedRequests() {
       const a = document.createElement('a');
       a.href = url;
       const timestamp = new Date().toISOString().slice(0, 10);
-      a.download = `redeemed_ious_${timestamp}.xlsx`;
+      a.download = `settled_requests_${timestamp}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

@@ -1040,10 +1040,8 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
 function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading }) {
   const [method, setMethod] = useState('');
   const [reference, setReference] = useState('');
-  const [ifsVoucher, setIfsVoucher] = useState('');
   const [notes, setNotes] = useState('');
   const [methodError, setMethodError] = useState('');
-  const [voucherError, setVoucherError] = useState('');
 
   function handleSubmit() {
     let hasError = false;
@@ -1051,19 +1049,13 @@ function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading 
       setMethodError('Payment Method is required');
       hasError = true;
     }
-    if (!ifsVoucher || !ifsVoucher.trim()) {
-      setVoucherError('IFS Voucher Number is required');
-      hasError = true;
-    }
     if (hasError) return;
 
     setMethodError('');
-    setVoucherError('');
     onDisburse({
       amount: Number(estimatedAmount),
       payment_method: method,
       payment_reference: reference,
-      ifs_voucher_number: ifsVoucher.trim(),
       notes
     });
   }
@@ -1098,21 +1090,9 @@ function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading 
           </select>
           {methodError && <p className="text-red-500 text-xs mt-1">{methodError}</p>}
         </div>
-        <div>
+        <div className="sm:col-span-2">
           <label className="block text-sm text-slate-700 mb-1">Payment Reference</label>
-          <input value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. TXN-12345" className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
-        </div>
-        <div>
-          <label className="block text-sm text-slate-700 mb-1">
-            IFS Voucher Number <span className="text-red-500">*</span>
-          </label>
-          <input
-            value={ifsVoucher}
-            onChange={e => { setIfsVoucher(e.target.value); setVoucherError(''); }}
-            placeholder="e.g. 2026/V/12345"
-            className={`w-full px-3 py-2 rounded-lg border text-sm font-mono ${voucherError ? 'border-red-400 focus:ring-red-200' : 'border-slate-200 focus:ring-blue-200'} focus:outline-none focus:ring-2`}
-          />
-          {voucherError && <p className="text-red-500 text-xs mt-1">{voucherError}</p>}
+          <input value={reference} onChange={e => setReference(e.target.value)} placeholder="e.g. TXN-12345, Cheque number, etc." className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
         </div>
         <div className="sm:col-span-2">
           <label className="block text-sm text-slate-700 mb-1">Notes</label>
@@ -1561,6 +1541,20 @@ function RedeemPanel({ iou, expense, reconciliation, disbursements, onRedeem, lo
         {diff === 0 && (
           <div className="text-sm text-slate-600 bg-slate-50 p-2 rounded">
             ✓ Exact match - no additional action needed.
+          </div>
+        )}
+        {(reconciliation?.ifs_voucher_number || iou?.ifs_voucher_number) && (
+          <div className="pt-2 border-t border-green-200/60 flex items-center gap-2 text-sm text-slate-700">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">IFS Voucher:</span>
+            <a
+              href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 font-mono font-bold hover:underline inline-flex items-center gap-1"
+            >
+              {reconciliation?.ifs_voucher_number || iou?.ifs_voucher_number}
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+            </a>
           </div>
         )}
       </div>
