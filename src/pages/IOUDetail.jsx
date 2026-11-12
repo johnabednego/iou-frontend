@@ -115,6 +115,53 @@ export default function IOUDetail() {
   // Approver name cache
   const [approverNames, setApproverNames] = useState({});
 
+  // Cashier return modals
+  const [showCashierReturnModal, setShowCashierReturnModal] = useState(false);
+  const [cashierReturnComments, setCashierReturnComments] = useState('');
+  const [cashierReturning, setCashierReturning] = useState(false);
+
+  const [showExpenseReturnModal, setShowExpenseReturnModal] = useState(false);
+  const [expenseReturnComments, setExpenseReturnComments] = useState('');
+  const [expenseReturning, setExpenseReturning] = useState(false);
+
+  async function handleCashierReturnSubmit() {
+    if (!cashierReturnComments.trim()) {
+      toastify.error('A reason/comment is required to return');
+      return;
+    }
+    setCashierReturning(true);
+    try {
+      await cashierReturnIOUApi(id, { comments: cashierReturnComments });
+      toastify.success('IOU returned to requester for edits.');
+      setShowCashierReturnModal(false);
+      setCashierReturnComments('');
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to return IOU');
+    } finally {
+      setCashierReturning(false);
+    }
+  }
+
+  async function handleExpenseReturnSubmit() {
+    if (!expenseReturnComments.trim()) {
+      toastify.error('A reason/comment is required to return expense');
+      return;
+    }
+    setExpenseReturning(true);
+    try {
+      await rejectExpenseApi(id, { reason: expenseReturnComments, comments: expenseReturnComments });
+      toastify.success('Expense returned to requester for edits.');
+      setShowExpenseReturnModal(false);
+      setExpenseReturnComments('');
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to return expense');
+    } finally {
+      setExpenseReturning(false);
+    }
+  }
+
   async function load() {
     setLoading(true);
 
@@ -207,14 +254,17 @@ export default function IOUDetail() {
       {/* Returned Request Banner */}
       {status === 'RETURNED' && (() => {
         const returnedApproval = [...approvals].reverse().find(a => a.decision === 'RETURNED' && a.comments);
+        const reason = returnedApproval?.comments || iou.metadata?.last_returned_reason;
+        const returnedBy = approverNames[returnedApproval?.approver_id] || iou.metadata?.last_returned_by || 'Cashier / Approver';
+        const returnedAt = returnedApproval?.decision_at || iou.metadata?.last_returned_at;
         return (
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-800 mb-1">
             <p className="font-semibold">↩ This request has been returned for edits.</p>
-            {returnedApproval?.comments && (
+            {reason && (
               <div className="mt-2 p-3 bg-yellow-100/60 rounded-lg border border-yellow-200">
                 <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wider mb-1">Reason</p>
-                <p className="text-sm text-yellow-900">"{returnedApproval.comments}"</p>
-                {returnedApproval.decision_at && <p className="text-xs text-yellow-600 mt-1">- {approverNames[returnedApproval.approver_id] || 'Approver'}, {shortDate(returnedApproval.decision_at)}</p>}
+                <p className="text-sm text-yellow-900">"{reason}"</p>
+                {returnedAt && <p className="text-xs text-yellow-600 mt-1">- {returnedBy}, {shortDate(returnedAt)}</p>}
               </div>
             )}
             <p className="mt-2">Please update the purpose or estimated amount below, modify attachments, and click "Save Changes" before re-submitting it for approval.</p>
@@ -225,16 +275,21 @@ export default function IOUDetail() {
       {/* Rejected Request Banner */}
       {status === 'REJECTED' && (() => {
         const rejectedApproval = [...approvals].reverse().find(a => a.decision === 'REJECTED' && a.comments);
-        return rejectedApproval?.comments ? (
+        const reason = rejectedApproval?.comments || iou.metadata?.last_rejected_reason;
+        const rejectedBy = approverNames[rejectedApproval?.approver_id] || iou.metadata?.last_rejected_by || 'Cashier / Approver';
+        const rejectedAt = rejectedApproval?.decision_at || iou.metadata?.last_rejected_at;
+        return (
           <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800 mb-1">
             <p className="font-semibold">✕ This request has been rejected.</p>
-            <div className="mt-2 p-3 bg-red-100/60 rounded-lg border border-red-200">
-              <p className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-1">Reason</p>
-              <p className="text-sm text-red-900">"{rejectedApproval.comments}"</p>
-              {rejectedApproval.decision_at && <p className="text-xs text-red-600 mt-1">- {approverNames[rejectedApproval.approver_id] || 'Approver'}, {shortDate(rejectedApproval.decision_at)}</p>}
-            </div>
+            {reason && (
+              <div className="mt-2 p-3 bg-red-100/60 rounded-lg border border-red-200">
+                <p className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-1">Reason</p>
+                <p className="text-sm text-red-900">"{reason}"</p>
+                {rejectedAt && <p className="text-xs text-red-600 mt-1">- {rejectedBy}, {shortDate(rejectedAt)}</p>}
+              </div>
+            )}
           </div>
-        ) : null;
+        );
       })()}
 
       {/* Timeline */}
@@ -587,26 +642,43 @@ export default function IOUDetail() {
         <Card title="Confirm Approval">
           <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 mb-3">
             <p className="text-sm text-emerald-800 font-medium">✓ All {approvals.length} approver(s) have approved this IOU.</p>
-            <p className="text-sm text-emerald-700 mt-1">Click below to finalize and move to disbursement.</p>
+            <p className="text-sm text-emerald-700 mt-1">Click below to finalize and move to disbursement, or return to requester if changes are needed.</p>
           </div>
-          <Button onClick={async () => {
-            setActionLoading(true);
-            try {
-              const res = await confirmApprovalApi(id);
-              toastify.success(res?.data?.message || 'Approval confirmed!');
-              await load();
-            } catch (err) {
-              toastify.error(err?.response?.data?.message || 'Failed to confirm');
-            } finally { setActionLoading(false); }
-          }} disabled={actionLoading}>
-            {actionLoading ? 'Confirming...' : '✓ Confirm Approval - Proceed to Disbursement'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={async () => {
+              setActionLoading(true);
+              try {
+                const res = await confirmApprovalApi(id);
+                toastify.success(res?.data?.message || 'Approval confirmed!');
+                await load();
+              } catch (err) {
+                toastify.error(err?.response?.data?.message || 'Failed to confirm');
+              } finally { setActionLoading(false); }
+            }} disabled={actionLoading}>
+              {actionLoading ? 'Confirming...' : '✓ Confirm Approval - Proceed to Disbursement'}
+            </Button>
+            <button
+              type="button"
+              onClick={() => { setCashierReturnComments(''); setShowCashierReturnModal(true); }}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              Return for Edits
+            </button>
+          </div>
         </Card>
       )}
 
       {/* Cashier: Disburse */}
       {isCashier && status === 'APPROVED_FOR_DISBURSEMENT' && (
-        <DisbursePanel estimatedAmount={iou.estimated_amount} currency={iou.currency} onDisburse={(data) => handleAction('disburse', data)} loading={actionLoading} />
+        <DisbursePanel
+          estimatedAmount={iou.estimated_amount}
+          currency={iou.currency}
+          onDisburse={(data) => handleAction('disburse', data)}
+          onReturn={() => { setCashierReturnComments(''); setShowCashierReturnModal(true); }}
+          loading={actionLoading}
+        />
       )}
 
       {/* Employee: Submit Expense (Req 8: only after disbursement confirmed) */}
@@ -631,7 +703,14 @@ export default function IOUDetail() {
 
       {/* Cashier: Reconcile */}
       {isCashier && status === 'EXPENSE_SUBMITTED' && expense && (
-        <ReconcilePanel iou={iou} expense={expense} currency={iou.currency} onReconcile={(data) => handleAction('reconcile', data)} loading={actionLoading} />
+        <ReconcilePanel
+          iou={iou}
+          expense={expense}
+          currency={iou.currency}
+          onReconcile={(data) => handleAction('reconcile', data)}
+          onReturnExpense={() => { setExpenseReturnComments(''); setShowExpenseReturnModal(true); }}
+          loading={actionLoading}
+        />
       )}
 
       {/* Owner or Cashier: Confirm Reconciliation */}
@@ -646,6 +725,82 @@ export default function IOUDetail() {
           isOwner={isOwner}
           isCashier={isCashier}
         />
+      )}
+
+      {/* ── Cashier Return Modal (IOU) ── */}
+      {showCashierReturnModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !cashierReturning && setShowCashierReturnModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Return IOU for Edits</h3>
+                <p className="text-sm text-slate-500 mt-0.5">The requester and any assigned approvers will be notified. Approvals will restart after the requester re-submits.</p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Comments <span className="text-red-500">*</span></label>
+              <textarea
+                value={cashierReturnComments}
+                onChange={e => setCashierReturnComments(e.target.value)}
+                rows={3}
+                placeholder="Explain why this IOU needs changes..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200 text-sm resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowCashierReturnModal(false)} disabled={cashierReturning} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition">Cancel</button>
+              <button
+                onClick={handleCashierReturnSubmit}
+                disabled={cashierReturning || !cashierReturnComments.trim()}
+                className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-amber-500 to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {cashierReturning ? 'Returning...' : '↩ Confirm Return'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cashier Return Expense Modal ── */}
+      {showExpenseReturnModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !expenseReturning && setShowExpenseReturnModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Return Expense for Edits</h3>
+                <p className="text-sm text-slate-500 mt-0.5">The requester and any assigned expense approvers will be notified. Expense approvals will restart once updated.</p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Comments <span className="text-red-500">*</span></label>
+              <textarea
+                value={expenseReturnComments}
+                onChange={e => setExpenseReturnComments(e.target.value)}
+                rows={3}
+                placeholder="Explain why this expense submission needs changes..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200 text-sm resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowExpenseReturnModal(false)} disabled={expenseReturning} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition">Cancel</button>
+              <button
+                onClick={handleExpenseReturnSubmit}
+                disabled={expenseReturning || !expenseReturnComments.trim()}
+                className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-amber-500 to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {expenseReturning ? 'Returning...' : '↩ Confirm Return'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -931,8 +1086,8 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
           </Button>
         </div>
 
-        {/* Cashier: Reject or Return - only available before approvers are assigned */}
-        {iouStatus === 'PENDING_HOD_ASSIGNMENT' && (
+        {/* Cashier: Reject or Return at any pending stage */}
+        {['PENDING_HOD_ASSIGNMENT', 'PENDING'].includes(iouStatus) && (
           <div className="mt-6 pt-5 border-t border-slate-100">
             <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Or take an alternative action:</p>
             <div className="flex flex-wrap gap-2">
@@ -1037,7 +1192,7 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
 }
 
 /* ── Disburse Panel ── */
-function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading }) {
+function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, onReturn, loading }) {
   const [method, setMethod] = useState('');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
@@ -1099,10 +1254,21 @@ function DisbursePanel({ estimatedAmount, currency = 'GHS', onDisburse, loading 
           <input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Disbursement notes..." className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
         </div>
       </div>
-      <div className="mt-4">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <Button onClick={handleSubmit} disabled={loading}>
           {loading ? 'Processing...' : 'Confirm Disbursement'}
         </Button>
+        {onReturn && (
+          <button
+            type="button"
+            onClick={onReturn}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+            Return for Edits
+          </button>
+        )}
       </div>
     </Card>
   );
@@ -1429,7 +1595,7 @@ function RejectExpensePanel({ onReject, loading }) {
 }
 
 /* ── Reconcile Panel ── */
-function ReconcilePanel({ iou, expense, currency = 'GHS', onReconcile, loading }) {
+function ReconcilePanel({ iou, expense, currency = 'GHS', onReconcile, onReturnExpense, loading }) {
   const [notes, setNotes] = useState('');
   const [ifsVoucherNumber, setIfsVoucherNumber] = useState('');
   const estimated = parseFloat(iou.estimated_amount) || 0;
@@ -1468,18 +1634,31 @@ function ReconcilePanel({ iou, expense, currency = 'GHS', onReconcile, loading }
         <label className="block text-sm text-slate-700 mb-1">Notes</label>
         <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm" />
       </div>
-      <Button
-        onClick={() => {
-          if (!ifsVoucherNumber.trim()) {
-            toastify.error('IFS Voucher Number is required');
-            return;
-          }
-          onReconcile({ notes, ifs_voucher_number: ifsVoucherNumber.trim() });
-        }}
-        disabled={loading || !ifsVoucherNumber.trim()}
-      >
-        {loading ? 'Reconciling...' : 'Confirm Reconciliation'}
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          onClick={() => {
+            if (!ifsVoucherNumber.trim()) {
+              toastify.error('IFS Voucher Number is required');
+              return;
+            }
+            onReconcile({ notes, ifs_voucher_number: ifsVoucherNumber.trim() });
+          }}
+          disabled={loading || !ifsVoucherNumber.trim()}
+        >
+          {loading ? 'Reconciling...' : 'Confirm Reconciliation'}
+        </Button>
+        {onReturnExpense && (
+          <button
+            type="button"
+            onClick={onReturnExpense}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+            Return Expense for Edits
+          </button>
+        )}
+      </div>
     </Card>
   );
 }

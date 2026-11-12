@@ -106,6 +106,30 @@ export default function DirectExpenseDetail() {
   const [approverNames, setApproverNames] = useState({});
   const [deIfsVoucher, setDeIfsVoucher] = useState('');
 
+  // Cashier return modal
+  const [showCashierReturnModal, setShowCashierReturnModal] = useState(false);
+  const [cashierReturnComments, setCashierReturnComments] = useState('');
+  const [cashierReturning, setCashierReturning] = useState(false);
+
+  async function handleCashierReturnSubmit() {
+    if (!cashierReturnComments.trim()) {
+      toastify.error('A reason/comment is required to return');
+      return;
+    }
+    setCashierReturning(true);
+    try {
+      await cashierReturnDEApi(id, { comments: cashierReturnComments });
+      toastify.success('Direct Expense returned to requester for edits.');
+      setShowCashierReturnModal(false);
+      setCashierReturnComments('');
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to return Direct Expense');
+    } finally {
+      setCashierReturning(false);
+    }
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -181,14 +205,17 @@ export default function DirectExpenseDetail() {
       {/* Returned Banner */}
       {status === 'RETURNED' && (() => {
         const returnedApproval = [...approvals].reverse().find(a => a.decision === 'RETURNED' && a.comments);
+        const reason = returnedApproval?.comments || de.metadata?.last_returned_reason;
+        const returnedBy = approverNames[returnedApproval?.approver_id] || de.metadata?.last_returned_by || 'Cashier / Approver';
+        const returnedAt = returnedApproval?.decision_at || de.metadata?.last_returned_at;
         return (
           <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-yellow-800 mb-1">
             <p className="font-semibold">↩ This request has been returned for edits.</p>
-            {returnedApproval?.comments && (
+            {reason && (
               <div className="mt-2 p-3 bg-yellow-100/60 rounded-lg border border-yellow-200">
                 <p className="text-xs font-semibold text-yellow-700 uppercase tracking-wider mb-1">Reason</p>
-                <p className="text-sm text-yellow-900">"{returnedApproval.comments}"</p>
-                {returnedApproval.decision_at && <p className="text-xs text-yellow-600 mt-1">- {approverNames[returnedApproval.approver_id] || 'Approver'}, {shortDate(returnedApproval.decision_at)}</p>}
+                <p className="text-sm text-yellow-900">"{reason}"</p>
+                {returnedAt && <p className="text-xs text-yellow-600 mt-1">- {returnedBy}, {shortDate(returnedAt)}</p>}
               </div>
             )}
             <p className="mt-2">Please update the details below and re-submit for approval.</p>
@@ -199,16 +226,21 @@ export default function DirectExpenseDetail() {
       {/* Rejected Banner */}
       {status === 'REJECTED' && (() => {
         const rejectedApproval = [...approvals].reverse().find(a => a.decision === 'REJECTED' && a.comments);
-        return rejectedApproval?.comments ? (
+        const reason = rejectedApproval?.comments || de.metadata?.last_rejected_reason;
+        const rejectedBy = approverNames[rejectedApproval?.approver_id] || de.metadata?.last_rejected_by || 'Cashier / Approver';
+        const rejectedAt = rejectedApproval?.decision_at || de.metadata?.last_rejected_at;
+        return (
           <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-800 mb-1">
             <p className="font-semibold">✕ This request has been rejected.</p>
-            <div className="mt-2 p-3 bg-red-100/60 rounded-lg border border-red-200">
-              <p className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-1">Reason</p>
-              <p className="text-sm text-red-900">"{rejectedApproval.comments}"</p>
-              {rejectedApproval.decision_at && <p className="text-xs text-red-600 mt-1">- {approverNames[rejectedApproval.approver_id] || 'Approver'}, {shortDate(rejectedApproval.decision_at)}</p>}
-            </div>
+            {reason && (
+              <div className="mt-2 p-3 bg-red-100/60 rounded-lg border border-red-200">
+                <p className="text-xs font-semibold text-red-700 uppercase tracking-wider mb-1">Reason</p>
+                <p className="text-sm text-red-900">"{reason}"</p>
+                {rejectedAt && <p className="text-xs text-red-600 mt-1">- {rejectedBy}, {shortDate(rejectedAt)}</p>}
+              </div>
+            )}
           </div>
-        ) : null;
+        );
       })()}
 
       {/* Timeline */}
@@ -480,22 +512,77 @@ export default function DirectExpenseDetail() {
         <Card title="Confirm Approval">
           <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 mb-3">
             <p className="text-sm text-emerald-800 font-medium">✓ All {deApprovals.length} approver(s) have approved this Direct Expense.</p>
-            <p className="text-sm text-emerald-700 mt-1">Click below to finalize and move to disbursement.</p>
+            <p className="text-sm text-emerald-700 mt-1">Click below to finalize and move to disbursement, or return to requester if changes are needed.</p>
           </div>
-          <Button onClick={async () => {
-            setActionLoading(true);
-            try { const res = await confirmDEApproval(id); toastify.success(res?.data?.message || 'Approval confirmed!'); await load(); }
-            catch (err) { toastify.error(err?.response?.data?.message || 'Failed to confirm'); }
-            finally { setActionLoading(false); }
-          }} disabled={actionLoading}>
-            {actionLoading ? 'Confirming...' : '✓ Confirm Approval - Proceed to Disbursement'}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button onClick={async () => {
+              setActionLoading(true);
+              try { const res = await confirmDEApproval(id); toastify.success(res?.data?.message || 'Approval confirmed!'); await load(); }
+              catch (err) { toastify.error(err?.response?.data?.message || 'Failed to confirm'); }
+              finally { setActionLoading(false); }
+            }} disabled={actionLoading}>
+              {actionLoading ? 'Confirming...' : '✓ Confirm Approval - Proceed to Disbursement'}
+            </Button>
+            <button
+              type="button"
+              onClick={() => { setCashierReturnComments(''); setShowCashierReturnModal(true); }}
+              disabled={actionLoading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              Return for Edits
+            </button>
+          </div>
         </Card>
       )}
 
       {/* Cashier: Disburse */}
       {isCashier && status === 'APPROVED_FOR_DISBURSEMENT' && (
-        <DisbursePanel amount={de.amount} currency={de.currency} onDisburse={(data) => handleAction('disburse', data)} loading={actionLoading} />
+        <DisbursePanel
+          amount={de.amount}
+          currency={de.currency}
+          onDisburse={(data) => handleAction('disburse', data)}
+          onReturn={() => { setCashierReturnComments(''); setShowCashierReturnModal(true); }}
+          loading={actionLoading}
+        />
+      )}
+
+      {/* ── Cashier Return Modal (Direct Expense) ── */}
+      {showCashierReturnModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !cashierReturning && setShowCashierReturnModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Return Direct Expense for Edits</h3>
+                <p className="text-sm text-slate-500 mt-0.5">The requester and any assigned approvers will be notified. Approvals will restart after the requester re-submits.</p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Comments <span className="text-red-500">*</span></label>
+              <textarea
+                value={cashierReturnComments}
+                onChange={e => setCashierReturnComments(e.target.value)}
+                rows={3}
+                placeholder="Explain why this Direct Expense needs changes..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-amber-200 text-sm resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowCashierReturnModal(false)} disabled={cashierReturning} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition">Cancel</button>
+              <button
+                onClick={handleCashierReturnSubmit}
+                disabled={cashierReturning || !cashierReturnComments.trim()}
+                className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-amber-500 to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {cashierReturning ? 'Returning...' : '↩ Confirm Return'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -715,7 +802,7 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
       )}
 
       {/* Cashier Reject/Return */}
-      {deStatus === 'PENDING_HOD_ASSIGNMENT' && (
+      {['PENDING_HOD_ASSIGNMENT', 'PENDING'].includes(deStatus) && (
         <div className="mt-5 pt-4 border-t border-slate-200 flex gap-3">
           <button onClick={() => { setShowReturnModal(true); setActionComments(''); }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 text-white font-semibold text-xs shadow-md hover:shadow-lg">Return for Edits</button>
           <button onClick={() => { setShowRejectModal(true); setActionComments(''); }} className="px-4 py-2 rounded-xl bg-gradient-to-r from-red-500 to-red-700 text-white font-semibold text-xs shadow-md hover:shadow-lg">Reject</button>
@@ -754,7 +841,7 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
 }
 
 /* ── Disburse Panel ── */
-function DisbursePanel({ amount: deAmount, currency, onDisburse, loading }) {
+function DisbursePanel({ amount: deAmount, currency, onDisburse, onReturn, loading }) {
   const [amount, setAmount] = useState(deAmount || '');
   const [method, setMethod] = useState('');
   const [reference, setReference] = useState('');
@@ -794,19 +881,32 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, loading }) {
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Notes</label>
           <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Notes..." className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm" />
         </div>
-        <Button onClick={() => {
-          if (!amount || isNaN(amount) || Number(amount) <= 0) { toastify.error('Enter a valid amount'); return; }
-          if (!ifsVoucher || !ifsVoucher.trim()) { toastify.error('IFS Voucher Number is required to disburse funds'); return; }
-          onDisburse({
-            amount: Number(amount),
-            payment_method: method || null,
-            payment_reference: reference || null,
-            ifs_voucher_number: ifsVoucher.trim(),
-            notes: notes || null
-          });
-        }} disabled={loading}>
-          {loading ? 'Disbursing...' : `Disburse ${formatCurrency(amount, currency)}`}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={() => {
+            if (!amount || isNaN(amount) || Number(amount) <= 0) { toastify.error('Enter a valid amount'); return; }
+            if (!ifsVoucher || !ifsVoucher.trim()) { toastify.error('IFS Voucher Number is required to disburse funds'); return; }
+            onDisburse({
+              amount: Number(amount),
+              payment_method: method || null,
+              payment_reference: reference || null,
+              ifs_voucher_number: ifsVoucher.trim(),
+              notes: notes || null
+            });
+          }} disabled={loading}>
+            {loading ? 'Disbursing...' : `Disburse ${formatCurrency(amount, currency)}`}
+          </Button>
+          {onReturn && (
+            <button
+              type="button"
+              onClick={onReturn}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+              Return for Edits
+            </button>
+          )}
+        </div>
       </div>
     </Card>
   );
