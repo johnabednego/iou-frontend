@@ -8,7 +8,8 @@ import {
   assignExpenseApprovers as assignExpenseApproversApi, decideExpenseApproval as decideExpenseApprovalApi,
   reconcileIOU, redeemIOU,
   getDisbursements, getExpense, getUsers, decideApproval as decideApprovalApi, listApprovers as listApproversApi,
-  cashierRejectIOU as cashierRejectIOUApi, cashierReturnIOU as cashierReturnIOUApi
+  cashierRejectIOU as cashierRejectIOUApi, cashierReturnIOU as cashierReturnIOUApi,
+  removeApprovalFromChain
 } from '../services/iouService';
 import { toast as toastify } from 'react-toastify';
 import api from '../services/api';
@@ -123,6 +124,32 @@ export default function IOUDetail() {
   const [showExpenseReturnModal, setShowExpenseReturnModal] = useState(false);
   const [expenseReturnComments, setExpenseReturnComments] = useState('');
   const [expenseReturning, setExpenseReturning] = useState(false);
+
+  // Remove approver modal
+  const [showRemoveApproverModal, setShowRemoveApproverModal] = useState(false);
+  const [removeApproverTarget, setRemoveApproverTarget] = useState(null);
+  const [removeApproverComments, setRemoveApproverComments] = useState('');
+  const [removingApprover, setRemovingApprover] = useState(false);
+
+  async function handleRemoveApprover() {
+    if (!removeApproverComments.trim()) {
+      toastify.error('A reason/comment is required to remove an approver');
+      return;
+    }
+    setRemovingApprover(true);
+    try {
+      await removeApprovalFromChain(removeApproverTarget.id, { comments: removeApproverComments.trim() });
+      toastify.success('Approver removed successfully');
+      setShowRemoveApproverModal(false);
+      setRemoveApproverTarget(null);
+      setRemoveApproverComments('');
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to remove approver');
+    } finally {
+      setRemovingApprover(false);
+    }
+  }
 
   async function handleCashierReturnSubmit() {
     if (!cashierReturnComments.trim()) {
@@ -431,11 +458,20 @@ export default function IOUDetail() {
                           <div className="text-xs text-slate-500">Step {app.step_order}</div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className={`text-sm font-medium ${app.decision === 'APPROVED' ? 'text-emerald-600' : app.decision === 'REJECTED' ? 'text-red-600' : app.decision === 'RETURNED' ? 'text-yellow-600' : 'text-amber-500'}`}>
+                      <div className="text-right flex items-center gap-2">
+                        {isCashier && app.decision === 'PENDING' && (
+                          <button
+                            type="button"
+                            onClick={() => { setRemoveApproverTarget(app); setRemoveApproverComments(''); setShowRemoveApproverModal(true); }}
+                            className="text-xs px-2 py-1 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition font-medium"
+                          >Remove</button>
+                        )}
+                        <div>
+                          <div className={`text-sm font-medium ${app.decision === 'APPROVED' ? 'text-emerald-600' : app.decision === 'REJECTED' ? 'text-red-600' : app.decision === 'RETURNED' ? 'text-yellow-600' : 'text-amber-500'}`}>
                           {app.decision}
                         </div>
                         {app.decision_at && <div className="text-xs text-slate-400">{shortDate(app.decision_at)}</div>}
+                        </div>
                       </div>
                     </div>
                     {app.comments && (
@@ -588,11 +624,20 @@ export default function IOUDetail() {
                         <div className="text-xs text-slate-500">Authorizer Step {app.step_order}</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className={`text-sm font-medium ${app.decision === 'APPROVED' ? 'text-emerald-600' : app.decision === 'RETURNED' ? 'text-yellow-600' : 'text-amber-500'}`}>
+                    <div className="text-right flex items-center gap-2">
+                      {isCashier && app.decision === 'PENDING' && (
+                        <button
+                          type="button"
+                          onClick={() => { setRemoveApproverTarget(app); setRemoveApproverComments(''); setShowRemoveApproverModal(true); }}
+                          className="text-xs px-2 py-1 rounded bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition font-medium"
+                        >Remove</button>
+                      )}
+                      <div>
+                        <div className={`text-sm font-medium ${app.decision === 'APPROVED' ? 'text-emerald-600' : app.decision === 'RETURNED' ? 'text-yellow-600' : 'text-amber-500'}`}>
                         {app.decision}
                       </div>
                       {app.decision_at && <div className="text-xs text-slate-400">{shortDate(app.decision_at)}</div>}
+                      </div>
                     </div>
                   </div>
                   {app.comments && (
@@ -623,8 +668,8 @@ export default function IOUDetail() {
         </Card>
       )}
 
-      {/* Cashier: Assign Approvers (shown for PENDING_HOD_ASSIGNMENT + PENDING) */}
-      {isCashier && ['PENDING_HOD_ASSIGNMENT', 'PENDING'].includes(status) && (
+      {/* Cashier: Assign Approvers (expanded: all stages except terminal) */}
+      {isCashier && !['DRAFT', 'RETURNED', 'REJECTED', 'REDEEMED'].includes(status) && (
         <AssignApproversPanel
           iouId={id}
           requesterId={iou.requester_id}
@@ -691,8 +736,8 @@ export default function IOUDetail() {
         <EditExpensePanel expense={expense} expenseApprovals={expenseApprovals} approverNames={approverNames} currency={iou.currency} onSubmit={(data) => handleAction('updateExpense', data)} loading={actionLoading} />
       )}
 
-      {/* Cashier: Assign Expense Approvers - Req 12 */}
-      {isCashier && status === 'EXPENSE_PENDING_APPROVAL' && expense && (
+      {/* Cashier: Assign Expense Approvers - expanded: show when expense exists and not redeemed */}
+      {isCashier && ['EXPENSE_PENDING_APPROVAL', 'EXPENSE_SUBMITTED', 'EXPENSE_RETURNED'].includes(status) && expense && (
         <AssignExpenseApproversPanel iouId={id} requesterId={iou.requester_id} existingApprovals={expenseApprovals} approverNames={approverNames} onAssigned={load} />
       )}
 
@@ -797,6 +842,46 @@ export default function IOUDetail() {
                 className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-amber-500 to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
               >
                 {expenseReturning ? 'Returning...' : '↩ Confirm Return'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Remove Approver Modal ── */}
+      {showRemoveApproverModal && removeApproverTarget && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !removingApprover && setShowRemoveApproverModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Remove Approver</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Remove <strong>{approverNames[removeApproverTarget.approver_id] || 'this approver'}</strong> (Step {removeApproverTarget.step_order}) from the approval chain. They will be notified via email with your reason.
+                </p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Comments <span className="text-red-500">*</span></label>
+              <textarea
+                value={removeApproverComments}
+                onChange={e => setRemoveApproverComments(e.target.value)}
+                rows={3}
+                placeholder="Explain why this approver is being removed..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-200 text-sm resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowRemoveApproverModal(false)} disabled={removingApprover} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition">Cancel</button>
+              <button
+                onClick={handleRemoveApprover}
+                disabled={removingApprover || !removeApproverComments.trim()}
+                className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-red-500 to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {removingApprover ? 'Removing...' : '✕ Remove Approver'}
               </button>
             </div>
           </div>
@@ -1087,7 +1172,7 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
         </div>
 
         {/* Cashier: Reject or Return at any pending stage */}
-        {['PENDING_HOD_ASSIGNMENT', 'PENDING'].includes(iouStatus) && (
+        {!['DRAFT', 'RETURNED', 'REJECTED', 'REDEEMED', 'COMPLETED'].includes(iouStatus) && (
           <div className="mt-6 pt-5 border-t border-slate-100">
             <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Or take an alternative action:</p>
             <div className="flex flex-wrap gap-2">

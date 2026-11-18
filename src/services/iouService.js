@@ -52,6 +52,7 @@ export const mergeDepartments = (data) => api.post('/departments/merge', data);
 // Approvals
 export const getMyApprovals = () => api.get('/approvals/mine');
 export const decideApproval = (id, data) => api.put(`/approvals/${id}`, data);
+export const removeApprovalFromChain = (id, data) => api.delete(`/approvals/${id}`, { data });
 
 // Audit Logs
 export const getAuditLogs = (params) => api.get('/audit-logs', { params });
