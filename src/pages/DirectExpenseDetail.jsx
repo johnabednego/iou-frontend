@@ -620,6 +620,46 @@ export default function DirectExpenseDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Remove Approver Modal ── */}
+      {showRemoveApproverModal && removeApproverTarget && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !removingApprover && setShowRemoveApproverModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">Remove Approver</h3>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Remove <strong>{approverNames[removeApproverTarget.approver_id] || 'this approver'}</strong> (Step {removeApproverTarget.step_order}) from the approval chain. They will be notified via email with your reason.
+                </p>
+              </div>
+            </div>
+            <div className="mb-5">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Comments <span className="text-red-500">*</span></label>
+              <textarea
+                value={removeApproverComments}
+                onChange={e => setRemoveApproverComments(e.target.value)}
+                rows={3}
+                placeholder="Explain why this approver is being removed..."
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-200 text-sm resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setShowRemoveApproverModal(false)} disabled={removingApprover} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition">Cancel</button>
+              <button
+                onClick={handleRemoveApprover}
+                disabled={removingApprover || !removeApproverComments.trim()}
+                className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-red-500 to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                {removingApprover ? 'Removing...' : '✕ Remove Approver'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -868,46 +908,6 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
             <div className="flex gap-3 justify-end">
               <button onClick={() => setShowRejectModal(false)} disabled={actioning} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm">Cancel</button>
               <button onClick={() => handleCashierAction('reject')} disabled={actioning} className="px-5 py-2 rounded-lg bg-gradient-to-r from-red-500 to-red-700 text-white font-semibold text-sm shadow-md">{actioning ? 'Rejecting...' : 'Confirm Reject'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Remove Approver Modal ── */}
-      {showRemoveApproverModal && removeApproverTarget && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !removingApprover && setShowRemoveApproverModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-start gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <svg className="w-5 h-5 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">Remove Approver</h3>
-                <p className="text-sm text-slate-500 mt-0.5">
-                  Remove <strong>{approverNames[removeApproverTarget.approver_id] || 'this approver'}</strong> (Step {removeApproverTarget.step_order}) from the approval chain. They will be notified via email with your reason.
-                </p>
-              </div>
-            </div>
-            <div className="mb-5">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Reason / Comments <span className="text-red-500">*</span></label>
-              <textarea
-                value={removeApproverComments}
-                onChange={e => setRemoveApproverComments(e.target.value)}
-                rows={3}
-                placeholder="Explain why this approver is being removed..."
-                className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-200 text-sm resize-none"
-                autoFocus
-              />
-            </div>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setShowRemoveApproverModal(false)} disabled={removingApprover} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-sm hover:bg-slate-50 transition">Cancel</button>
-              <button
-                onClick={handleRemoveApprover}
-                disabled={removingApprover || !removeApproverComments.trim()}
-                className="px-5 py-2 rounded-lg text-white font-semibold text-sm shadow-md bg-gradient-to-r from-red-500 to-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                {removingApprover ? 'Removing...' : '✕ Remove Approver'}
-              </button>
             </div>
           </div>
         </div>
