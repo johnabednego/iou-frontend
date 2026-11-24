@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { listDirectExpenses, getCurrencies, getDepartments } from '../services/iouService';
 import Card from '../components/ui/Card';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 
 const STATUS_OPTIONS = [
@@ -56,6 +56,7 @@ function shortDate(dt) {
 
 export default function DirectExpenseList() {
   const { user } = useContext(AuthContext);
+  const [searchParams] = useSearchParams();
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
   const isApprover = user?.is_approver === true;
   const isHod = user?.role === 'hod';
@@ -65,7 +66,7 @@ export default function DirectExpenseList() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [currencyFilter, setCurrencyFilter] = useState('');

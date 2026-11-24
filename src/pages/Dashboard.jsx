@@ -540,7 +540,7 @@ export default function Dashboard() {
       {/* === KPI Cards === */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total IOUs */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+        <div onClick={() => nav('/ious')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg hover:shadow-xl transition-shadow group">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full group-hover:scale-110 transition-transform" />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-3">
@@ -557,7 +557,7 @@ export default function Dashboard() {
         </div>
 
         {/* Pending IOUs */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+        <div onClick={() => nav('/ious?status=PENDING')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-3">
@@ -577,7 +577,7 @@ export default function Dashboard() {
         </div>
 
         {/* Approved this month */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+        <div onClick={() => nav('/ious?status=APPROVED_FOR_DISBURSEMENT')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 p-5 shadow-lg hover:shadow-xl transition-shadow group">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-3">
@@ -599,7 +599,7 @@ export default function Dashboard() {
         </div>
 
         {/* Multi-Currency Approved Amount */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+        <div onClick={() => nav('/ious')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
           <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
           <div className="relative z-10">
             <div className="flex items-center gap-2 mb-2">
@@ -636,7 +636,7 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total DE */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav('/direct-expenses')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-3">
@@ -655,7 +655,7 @@ export default function Dashboard() {
             </div>
 
             {/* DE Pending */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav('/direct-expenses?status=PENDING')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-3">
@@ -672,7 +672,7 @@ export default function Dashboard() {
             </div>
 
             {/* DE Completed */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-green-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav('/direct-expenses?status=COMPLETED')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-green-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-3">
@@ -691,7 +691,7 @@ export default function Dashboard() {
             </div>
 
             {/* DE Amount Spent per Currency */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav('/direct-expenses')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-2">

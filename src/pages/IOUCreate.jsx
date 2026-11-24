@@ -102,7 +102,7 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
 
     // Attachments are REQUIRED for Direct Expense
     if (requestType === 'direct-expense' && safeAttachments.length === 0) {
-      e.attachments = 'Receipt or invoice attachments are required for a Direct Expense.';
+      e.attachments = 'Receipt or supporting attachments are required for a Direct Expense.';
     }
 
     setErrors(e);
@@ -243,7 +243,7 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
             </p>
             <p className="text-xs mt-0.5 opacity-90">
               {isDe
-                ? 'Direct expenses are disbursed directly against verified invoices or receipts. Attachments are mandatory before submission. No post-disbursement reconciliation is required.'
+                ? 'Direct expenses are disbursed directly against verified receipts or supporting documents. Attachments are mandatory before submission. No post-disbursement reconciliation is required.'
                 : 'IOUs provide upfront cash advances. You will be required to submit receipts and perform reconciliation once funds are spent.'}
             </p>
           </div>
@@ -326,7 +326,7 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="block text-sm text-slate-700">
-                {isDe ? 'Receipts / Invoice Attachments' : 'Attachments'}{' '}
+                {isDe ? 'Receipts / Supporting Attachments' : 'Attachments'}{' '}
                 {isDe && <span className="text-red-500 font-bold">* (Required)</span>}
               </label>
               {isDe && (

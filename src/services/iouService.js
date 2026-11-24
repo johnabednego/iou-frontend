@@ -64,6 +64,12 @@ export const cashierReturnIOU = (id, data) => api.post(`/ious/${id}/cashier-retu
 // Settings
 export const getDateLimit = () => api.get('/settings/date-limit');
 export const setDateLimit = (min_date) => api.put('/settings/date-limit', { min_date });
+export const getIfsVoucherEditing = () => api.get('/settings/ifs-voucher-editing');
+export const setIfsVoucherEditing = (enabled) => api.put('/settings/ifs-voucher-editing', { enabled });
+
+// IFS Voucher editing
+export const updateIOUIfsVoucher = (id, ifs_voucher_number) => api.put(`/ious/${id}/ifs-voucher`, { ifs_voucher_number });
+export const updateDEIfsVoucher = (id, ifs_voucher_number) => api.put(`/direct-expenses/${id}/ifs-voucher`, { ifs_voucher_number });
 
 // Export (returns download URL string for use with window.open or anchor)
 export const getExportUrl = (params = {}) => {

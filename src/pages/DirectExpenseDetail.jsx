@@ -6,7 +6,8 @@ import {
   disburseDERequest, confirmDEDisbursement, completeDirectExpense,
   getDEDisbursements, getUsers, decideApproval as decideApprovalApi, listApprovers as listApproversApi,
   cashierRejectDE as cashierRejectDEApi, cashierReturnDE as cashierReturnDEApi,
-  removeApprovalFromChain
+  removeApprovalFromChain,
+  getIfsVoucherEditing, updateDEIfsVoucher
 } from '../services/iouService';
 import { toast as toastify } from 'react-toastify';
 import api from '../services/api';
@@ -107,6 +108,12 @@ export default function DirectExpenseDetail() {
   const [approverNames, setApproverNames] = useState({});
   const [deIfsVoucher, setDeIfsVoucher] = useState('');
 
+  // IFS Voucher inline editing
+  const [ifsEditEnabled, setIfsEditEnabled] = useState(false);
+  const [editingIfsVoucher, setEditingIfsVoucher] = useState(false);
+  const [editIfsValue, setEditIfsValue] = useState('');
+  const [savingIfs, setSavingIfs] = useState(false);
+
   // Cashier return modal
   const [showCashierReturnModal, setShowCashierReturnModal] = useState(false);
   const [cashierReturnComments, setCashierReturnComments] = useState('');
@@ -189,6 +196,26 @@ export default function DirectExpenseDetail() {
   }
 
   useEffect(() => { load(); }, [id]);
+
+  // Check IFS voucher editing setting
+  useEffect(() => {
+    if (user?.is_cashier || user?.is_admin) {
+      getIfsVoucherEditing().then(r => setIfsEditEnabled(r.data?.enabled || false)).catch(() => {});
+    }
+  }, [user]);
+
+  async function handleSaveIfsVoucher() {
+    if (!editIfsValue.trim()) { toastify.error('IFS Voucher Number is required'); return; }
+    setSavingIfs(true);
+    try {
+      await updateDEIfsVoucher(id, editIfsValue.trim());
+      toastify.success('IFS Voucher Number updated successfully.');
+      setEditingIfsVoucher(false);
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to update IFS Voucher Number');
+    } finally { setSavingIfs(false); }
+  }
 
   async function handleAction(action, data = {}) {
     setActionLoading(true);
@@ -323,22 +350,51 @@ export default function DirectExpenseDetail() {
             <DetailItem label="Created" value={shortDate(de.created_at)} />
             <DetailItem label="Submitted" value={shortDate(de.submitted_at)} />
             {de.ifs_voucher_number && (
-              <DetailItem
-                label="IFS Voucher #"
-                value={
-                  <a
-                    href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline inline-flex items-center gap-1 font-semibold"
-                  >
-                    {de.ifs_voucher_number}
-                    <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
-                }
-              />
+              editingIfsVoucher ? (
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher #</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      value={editIfsValue}
+                      onChange={e => setEditIfsValue(e.target.value)}
+                      className="px-2 py-1 rounded border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 w-40"
+                      autoFocus
+                    />
+                    <button onClick={handleSaveIfsVoucher} disabled={savingIfs} className="px-2 py-1 rounded bg-teal-600 text-white text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
+                      {savingIfs ? 'Saving...' : 'Save'}
+                    </button>
+                    <button onClick={() => setEditingIfsVoucher(false)} className="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-300">
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher #</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <a
+                      href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline inline-flex items-center gap-1 font-semibold text-sm"
+                    >
+                      {de.ifs_voucher_number}
+                      <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                    {ifsEditEnabled && (user?.is_cashier || user?.is_admin) && (
+                      <button
+                        onClick={() => { setEditIfsValue(de.ifs_voucher_number); setEditingIfsVoucher(true); }}
+                        className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-teal-600"
+                        title="Edit IFS Voucher Number"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
             )}
           </div>
         )}
@@ -377,9 +433,9 @@ export default function DirectExpenseDetail() {
                       )}
                       <div>
                         <div className={`text-sm font-medium ${app.decision === 'APPROVED' ? 'text-emerald-600' : app.decision === 'REJECTED' ? 'text-red-600' : app.decision === 'RETURNED' ? 'text-yellow-600' : 'text-amber-500'}`}>
-                        {app.decision}
-                      </div>
-                      {app.decision_at && <div className="text-xs text-slate-400">{shortDate(app.decision_at)}</div>}
+                          {app.decision}
+                        </div>
+                        {app.decision_at && <div className="text-xs text-slate-400">{shortDate(app.decision_at)}</div>}
                       </div>
                     </div>
                   </div>
@@ -451,6 +507,7 @@ export default function DirectExpenseDetail() {
               <DetailItem label="Disbursed" value={shortDate(d.disbursed_at)} />
               {d.cashier && <DetailItem label="Cashier" value={d.cashier.display_name || d.cashier.username} />}
               <DetailItem label="Confirmed" value={d.confirmed_by_user ? `✓ ${shortDate(d.confirmed_at)}` : 'Not yet'} />
+              {d.notes && <div className="col-span-full"><DetailItem label="Disbursement Notes" value={d.notes} /></div>}
             </div>
           ))}
         </Card>
@@ -530,8 +587,8 @@ export default function DirectExpenseDetail() {
         </Card>
       )}
 
-      {/* Cashier: Assign Approvers (expanded: all stages except terminal) */}
-      {isCashier && !['DRAFT', 'RETURNED', 'REJECTED', 'COMPLETED'].includes(status) && (
+      {/* Cashier: Assign Approvers (only before disbursement) */}
+      {isCashier && ['PENDING_HOD_ASSIGNMENT', 'PENDING'].includes(status) && (
         <AssignApproversPanel
           deId={id}
           requesterId={de.requester_id}
@@ -722,9 +779,9 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
   const startStep = occupied.length + 1;
   const initialRows = occupied.length === 0
     ? [
-        { approver_id: '', step_order: 1, display_name: '' },
-        { approver_id: '', step_order: 2, display_name: '' }
-      ]
+      { approver_id: '', step_order: 1, display_name: '' },
+      { approver_id: '', step_order: 2, display_name: '' }
+    ]
     : [{ approver_id: '', step_order: startStep, display_name: '' }];
 
   const [rows, setRows] = useState(initialRows);
@@ -741,9 +798,9 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
     setRows(
       occupied.length === 0
         ? [
-            { approver_id: '', step_order: 1, display_name: '' },
-            { approver_id: '', step_order: 2, display_name: '' }
-          ]
+          { approver_id: '', step_order: 1, display_name: '' },
+          { approver_id: '', step_order: 2, display_name: '' }
+        ]
         : [{ approver_id: '', step_order: startStep, display_name: '' }]
     );
   }, [startStep, occupied.length]);

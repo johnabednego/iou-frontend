@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useState } from 'react';
 import Card from '../components/ui/Card';
 import { AuthContext } from '../contexts/AuthContext';
-import { getDateLimit, setDateLimit as setDateLimitApi } from '../services/iouService';
+import { getDateLimit, setDateLimit as setDateLimitApi, getIfsVoucherEditing, setIfsVoucherEditing as setIfsVoucherEditingApi } from '../services/iouService';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -14,11 +14,19 @@ export default function Settings() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
+  // IFS Voucher editing state
+  const [ifsEditingEnabled, setIfsEditingEnabled] = useState(false);
+  const [ifsLoading, setIfsLoading] = useState(true);
+  const [ifsSaving, setIfsSaving] = useState(false);
+  const [ifsMessage, setIfsMessage] = useState('');
+  const [ifsError, setIfsError] = useState('');
+
   const todayDate = new Date();
   todayDate.setHours(23, 59, 59, 999);
 
   useEffect(() => {
     loadDateLimit();
+    loadIfsVoucherEditing();
   }, []);
 
   async function loadDateLimit() {
@@ -34,6 +42,19 @@ export default function Settings() {
       setError('Failed to load current date limit setting.');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadIfsVoucherEditing() {
+    setIfsLoading(true);
+    try {
+      const res = await getIfsVoucherEditing();
+      setIfsEditingEnabled(res.data?.enabled || false);
+    } catch (err) {
+      console.error('Failed to load IFS voucher editing setting', err);
+      setIfsError('Failed to load IFS voucher editing setting.');
+    } finally {
+      setIfsLoading(false);
     }
   }
 
@@ -54,6 +75,23 @@ export default function Settings() {
       setError(err?.response?.data?.message || 'Failed to update date limit.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleIfsToggle() {
+    const newValue = !ifsEditingEnabled;
+    setIfsSaving(true);
+    setIfsMessage('');
+    setIfsError('');
+    try {
+      const res = await setIfsVoucherEditingApi(newValue);
+      setIfsEditingEnabled(newValue);
+      setIfsMessage(res.data?.message || `IFS Voucher editing ${newValue ? 'enabled' : 'disabled'} successfully.`);
+    } catch (err) {
+      console.error('Failed to toggle IFS voucher editing', err);
+      setIfsError(err?.response?.data?.message || 'Failed to update IFS voucher editing setting.');
+    } finally {
+      setIfsSaving(false);
     }
   }
 
@@ -143,6 +181,85 @@ export default function Settings() {
                   <li>If not set, defaults to the first day of the current month</li>
                   <li>Only administrators can change this setting</li>
                   <li>The setting takes effect immediately for all users</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* IFS Voucher Editing Setting */}
+      <Card title="IFS Voucher Number Editing">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            When enabled, cashiers and admins can edit IFS Voucher Numbers on completed or reconciled requests.
+            Turn this on when corrections are needed, then turn it off to prevent accidental changes.
+          </p>
+
+          {ifsLoading ? (
+            <div className="h-10 bg-slate-50 rounded animate-pulse" />
+          ) : (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">
+                    IFS Voucher Editing is currently{' '}
+                    <span className={ifsEditingEnabled ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'}>
+                      {ifsEditingEnabled ? 'ENABLED' : 'DISABLED'}
+                    </span>
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {ifsEditingEnabled
+                      ? 'Cashiers and admins can edit IFS Voucher Numbers on request detail pages.'
+                      : 'IFS Voucher Numbers are locked and cannot be edited.'}
+                  </p>
+                </div>
+                <button
+                  onClick={handleIfsToggle}
+                  disabled={ifsSaving}
+                  className={`relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                    ifsEditingEnabled
+                      ? 'bg-emerald-500 focus:ring-emerald-500'
+                      : 'bg-slate-300 focus:ring-slate-400'
+                  } ${ifsSaving ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
+                      ifsEditingEnabled ? 'translate-x-8' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {ifsMessage && (
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+                  {ifsMessage}
+                </div>
+              )}
+              {ifsError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {ifsError}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="text-amber-500 mt-0.5">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+              </div>
+              <div className="text-sm text-slate-600">
+                <p className="font-medium text-slate-700 mb-1">Important</p>
+                <ul className="list-disc list-inside space-y-1 text-xs text-slate-500">
+                  <li>Only enable this when IFS Voucher corrections are needed</li>
+                  <li>Disable it after corrections are complete to prevent accidental edits</li>
+                  <li>All edits are logged in the audit trail for accountability</li>
+                  <li>Only cashiers and admins can edit IFS Voucher Numbers</li>
                 </ul>
               </div>
             </div>
