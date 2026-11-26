@@ -3,18 +3,9 @@ import React, { useState, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import { formatCurrency } from '../../utils/currency';
 
 const CURRENCY_COLORS = { GHS: '#34d399', USD: '#60a5fa', EUR: '#c084fc', GBP: '#f472b6' };
-
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
-}
 
 const TABS = [
   { key: 'weekly', label: 'This Week' },

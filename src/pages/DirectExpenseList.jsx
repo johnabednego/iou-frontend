@@ -1,16 +1,27 @@
-import React, { useEffect, useState, useContext, useMemo } from 'react';
+import React, { useEffect, useState, useContext, useMemo, useRef } from 'react';
 import { listDirectExpenses, getCurrencies, getDepartments } from '../services/iouService';
 import Card from '../components/ui/Card';
+import TallyBreakdownBar from '../components/ui/TallyBreakdownBar';
+import IfsVoucherDisplay from '../components/ui/IfsVoucherDisplay';
 import { Link, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
+import { formatCurrency } from '../utils/currency';
+import { matchesDeStatus } from '../utils/statusFilters';
 
 const STATUS_OPTIONS = [
-  '', 'DRAFT', 'PENDING_HOD_ASSIGNMENT', 'PENDING',
+  '', 'PENDING_GROUP', 'AWAITING_ACTION_GROUP', 'IN_PROGRESS_GROUP', 'DRAFT_RETURNED_GROUP', 'REJECTED_GROUP', 'APPROVED_GROUP',
+  'DRAFT', 'PENDING_HOD_ASSIGNMENT', 'PENDING',
   'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'DISBURSEMENT_CONFIRMED', 'COMPLETED',
   'RETURNED', 'REJECTED'
 ];
 const STATUS_LABELS = {
   '': 'All Statuses',
+  PENDING_GROUP: 'All Pending (Assignment & Approval)',
+  AWAITING_ACTION_GROUP: 'Awaiting Action (Pending & Ready)',
+  IN_PROGRESS_GROUP: 'Disbursed & Funds Confirmed',
+  DRAFT_RETURNED_GROUP: 'Draft & Returned',
+  REJECTED_GROUP: 'Rejected & Cancelled',
+  APPROVED_GROUP: 'All Approved & Active',
   DRAFT: 'Draft',
   PENDING_HOD_ASSIGNMENT: 'Awaiting Approver Assignment',
   PENDING: 'Pending Approval',
@@ -39,16 +50,6 @@ function StatusBadge({ status }) {
   return <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${colors[s] || 'bg-slate-100 text-slate-700'}`}>{label}</span>;
 }
 
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
-}
-
 function shortDate(dt) {
   if (!dt) return '-';
   return new Date(dt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -56,58 +57,182 @@ function shortDate(dt) {
 
 export default function DirectExpenseList() {
   const { user } = useContext(AuthContext);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
   const isApprover = user?.is_approver === true;
   const isHod = user?.role === 'hod';
   const canViewAll = isCashierOrAdmin || isApprover || isHod;
-  const [viewAll, setViewAll] = useState(canViewAll);
+  const [viewAll, setViewAll] = useState(searchParams.get('view') === 'mine' ? false : canViewAll);
 
   const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const hasLoadedOnceRef = useRef(false);
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [currencyFilter, setCurrencyFilter] = useState('');
-  const [deptFilter, setDeptFilter] = useState('');
+  const [startDate, setStartDate] = useState(searchParams.get('start_date') || '');
+  const [endDate, setEndDate] = useState(searchParams.get('end_date') || '');
+  const [dateField, setDateField] = useState(searchParams.get('date_field') || '');
+  const [currencyFilter, setCurrencyFilter] = useState(searchParams.get('currency') || '');
+  const [deptFilter, setDeptFilter] = useState(searchParams.get('department') || '');
   const [departments, setDepartments] = useState([]);
   const [currencies, setCurrencies] = useState([]);
+
+  const fromDashboard = searchParams.get('from') === 'dashboard';
+  const urlStatusParam = searchParams.get('status') || '';
+  const [dashboardStatusLocked, setDashboardStatusLocked] = useState(Boolean(fromDashboard && urlStatusParam));
+
+  useEffect(() => {
+    const nextFromDashboard = searchParams.get('from') === 'dashboard';
+    const nextUrlStatus = searchParams.get('status') || '';
+    setStatusFilter(nextUrlStatus);
+    setDashboardStatusLocked(Boolean(nextFromDashboard && nextUrlStatus));
+    setSearch(searchParams.get('search') || '');
+    setStartDate(searchParams.get('start_date') || '');
+    setEndDate(searchParams.get('end_date') || '');
+    setDateField(searchParams.get('date_field') || '');
+    setCurrencyFilter(searchParams.get('currency') || '');
+    setDeptFilter(searchParams.get('department') || '');
+    const viewParam = searchParams.get('view');
+    if (viewParam === 'mine') setViewAll(false);
+    else if (canViewAll) setViewAll(true);
+  }, [searchParams, canViewAll]);
 
   useEffect(() => {
     getCurrencies({ include_inactive: 'true' }).then(res => setCurrencies(res.data?.data || [])).catch(() => { });
     getDepartments().then(res => setDepartments(res.data?.data || [])).catch(() => { });
   }, []);
 
-  useEffect(() => {
-    const timer = setTimeout(() => { fetchItems(); }, 300);
-    return () => clearTimeout(timer);
-  }, [search, statusFilter, startDate, endDate, viewAll, currencyFilter, deptFilter]);
+  const lockedDashboardStatus = dashboardStatusLocked ? urlStatusParam : '';
 
-  async function fetchItems() {
-    setLoading(true);
+  useEffect(() => {
+    const delay = search ? 250 : 0;
+    const timer = setTimeout(() => { fetchItems(lockedDashboardStatus); }, delay);
+    return () => clearTimeout(timer);
+  }, [search, startDate, endDate, dateField, viewAll, currencyFilter, deptFilter, canViewAll, lockedDashboardStatus]);
+
+  async function fetchItems(serverStatus = '') {
+    if (!hasLoadedOnceRef.current) setInitialLoading(true);
+    else setRefreshing(true);
     try {
-      const params = { limit: 200 };
+      const params = { limit: 2000 };
       if (search) params.search = search;
-      if (statusFilter) params.status = statusFilter;
+      if (serverStatus) params.status = serverStatus;
       if (startDate) params.start_date = startDate;
       if (endDate) params.end_date = endDate;
+      if (dateField) params.date_field = dateField;
       if (currencyFilter) params.currency = currencyFilter;
       if (deptFilter) params.department = deptFilter;
       if (canViewAll && viewAll) params.all = true;
       const res = await listDirectExpenses(params);
       setItems(res.data.data || []);
+      hasLoadedOnceRef.current = true;
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      setInitialLoading(false);
+      setRefreshing(false);
     }
   }
 
+  const filteredItems = useMemo(
+    () => (statusFilter ? items.filter(i => matchesDeStatus(i.status, statusFilter)) : items),
+    [items, statusFilter]
+  );
+
   const totalCount = items.length;
   const pendingCount = useMemo(() => items.filter(i => ['PENDING', 'PENDING_HOD_ASSIGNMENT', 'APPROVED_FOR_DISBURSEMENT'].includes(i.status)).length, [items]);
-  const disbursedCount = useMemo(() => items.filter(i => ['DISBURSED'].includes(i.status)).length, [items]);
+  const disbursedCount = useMemo(() => items.filter(i => ['DISBURSED', 'DISBURSEMENT_CONFIRMED'].includes(i.status)).length, [items]);
   const completedCount = useMemo(() => items.filter(i => ['COMPLETED'].includes(i.status)).length, [items]);
+
+  const breakdownSegments = useMemo(() => {
+    const countIn = (statuses) => items.filter(i => statuses.includes(i.status)).length;
+    const knownStatuses = [
+      'PENDING', 'PENDING_HOD_ASSIGNMENT',
+      'APPROVED_FOR_DISBURSEMENT',
+      'DISBURSED', 'DISBURSEMENT_CONFIRMED',
+      'COMPLETED',
+      'DRAFT', 'RETURNED',
+      'REJECTED', 'CANCELLED'
+    ];
+    const otherCount = items.filter(i => !knownStatuses.includes(i.status)).length;
+
+    const segments = [
+      {
+        key: 'pending',
+        label: 'Pending Approval',
+        count: countIn(['PENDING', 'PENDING_HOD_ASSIGNMENT']),
+        status: 'PENDING_GROUP',
+        barColor: 'bg-amber-500',
+        pillClass: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+      },
+      {
+        key: 'ready',
+        label: 'Ready to Disburse',
+        count: countIn(['APPROVED_FOR_DISBURSEMENT']),
+        status: 'APPROVED_FOR_DISBURSEMENT',
+        barColor: 'bg-indigo-500',
+        pillClass: 'bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100'
+      },
+      {
+        key: 'disbursed',
+        label: 'Disbursed / Awaiting Confirmation',
+        count: disbursedCount,
+        status: 'IN_PROGRESS_GROUP',
+        barColor: 'bg-blue-500',
+        pillClass: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+      },
+      {
+        key: 'completed',
+        label: 'Completed',
+        count: completedCount,
+        status: 'COMPLETED',
+        barColor: 'bg-teal-500',
+        pillClass: 'bg-teal-50 text-teal-800 border-teal-200 hover:bg-teal-100'
+      },
+      {
+        key: 'draftReturned',
+        label: 'Draft / Returned',
+        count: countIn(['DRAFT', 'RETURNED']),
+        status: 'DRAFT_RETURNED_GROUP',
+        barColor: 'bg-slate-400',
+        pillClass: 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+      },
+      {
+        key: 'rejected',
+        label: 'Rejected / Cancelled',
+        count: countIn(['REJECTED', 'CANCELLED']),
+        status: 'REJECTED_GROUP',
+        barColor: 'bg-red-500',
+        pillClass: 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+      }
+    ];
+    if (otherCount > 0) {
+      segments.push({
+        key: 'other',
+        label: 'Other',
+        count: otherCount,
+        status: '',
+        barColor: 'bg-purple-400',
+        pillClass: 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
+      });
+    }
+    return segments;
+  }, [items, disbursedCount, completedCount]);
+
+  function handleStatusCardFilter(targetStatus) {
+    if (dashboardStatusLocked && targetStatus !== urlStatusParam) {
+      setDashboardStatusLocked(false);
+    }
+    if (!targetStatus) {
+      setStatusFilter('');
+      return;
+    }
+    setStatusFilter(prev => (prev === targetStatus ? '' : targetStatus));
+  }
+
+  const hasActiveFilters = Boolean(search || statusFilter || startDate || endDate || dateField || currencyFilter || deptFilter);
+  const hideZeroCards = fromDashboard;
 
   const pageTitle = useMemo(() => {
     if (canViewAll && viewAll) {
@@ -163,52 +288,125 @@ export default function DirectExpenseList() {
         </Link>
       </div>
 
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-slate-300 uppercase tracking-wider">Total Requests</span>
-            <div className="p-1.5 rounded-lg bg-white/10">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
-            </div>
-          </div>
-          <div className="text-3xl font-extrabold">{totalCount}</div>
-          <div className="text-xs text-slate-400 mt-1">In current view</div>
+      {/* Summary KPI Cards (clickable to filter without layout jump or skeleton blink; hide 0-count cards only when routed from Dashboard) */}
+      {initialLoading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className="h-28 rounded-2xl bg-white/70 animate-pulse shadow" />
+          ))}
         </div>
+      ) : (() => {
+        const cards = [
+          {
+            key: 'total',
+            targetStatus: '',
+            count: totalCount,
+            title: 'Total Requests',
+            subtitle: statusFilter ? 'Click to show all' : 'In current view',
+            gradient: 'from-slate-700 to-slate-900',
+            titleColor: 'text-slate-300',
+            subColor: 'text-slate-400',
+            iconBg: 'bg-white/10',
+            icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
+          },
+          {
+            key: 'pending',
+            targetStatus: 'AWAITING_ACTION_GROUP',
+            count: pendingCount,
+            title: 'Awaiting Action',
+            subtitle: 'Approval or disbursement',
+            gradient: 'from-amber-500 to-orange-600',
+            titleColor: 'text-amber-100',
+            subColor: 'text-amber-100',
+            iconBg: 'bg-white/15',
+            icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+          },
+          {
+            key: 'disbursed',
+            targetStatus: 'IN_PROGRESS_GROUP',
+            count: disbursedCount,
+            title: 'Disbursed',
+            subtitle: 'Awaiting confirmation',
+            gradient: 'from-blue-600 to-indigo-700',
+            titleColor: 'text-blue-100',
+            subColor: 'text-blue-100',
+            iconBg: 'bg-white/15',
+            icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
+          },
+          {
+            key: 'completed',
+            targetStatus: 'COMPLETED',
+            count: completedCount,
+            title: 'Completed',
+            subtitle: 'Fully closed',
+            gradient: 'from-teal-600 to-cyan-700',
+            titleColor: 'text-teal-100',
+            subColor: 'text-teal-100',
+            iconBg: 'bg-white/15',
+            icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
+          }
+        ].filter(c => !hideZeroCards || c.count > 0);
 
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">Awaiting Action</span>
-            <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-            </div>
-          </div>
-          <div className="text-3xl font-extrabold">{pendingCount}</div>
-          <div className="text-xs text-amber-100 mt-1">Approval or disbursement</div>
-        </div>
+        const nonZeroSegments = breakdownSegments.filter(s => s.count > 0);
+        const showTally = totalCount > 0 && (!hideZeroCards || nonZeroSegments.length > 1);
 
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-blue-100 uppercase tracking-wider">Disbursed</span>
-            <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2" /><line x1="1" y1="10" x2="23" y2="10" /></svg>
-            </div>
-          </div>
-          <div className="text-3xl font-extrabold">{disbursedCount}</div>
-          <div className="text-xs text-blue-100 mt-1">Awaiting confirmation</div>
-        </div>
+        if (cards.length === 0 && !showTally) return null;
 
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-700 p-5 shadow-lg text-white">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-teal-100 uppercase tracking-wider">Completed</span>
-            <div className="p-1.5 rounded-lg bg-white/15">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><polyline points="20 6 9 17 4 12" /></svg>
-            </div>
+        const gridCols = cards.length === 1
+          ? 'grid-cols-1 max-w-sm'
+          : cards.length === 2
+          ? 'grid-cols-1 sm:grid-cols-2'
+          : cards.length === 3
+          ? 'grid-cols-1 sm:grid-cols-3'
+          : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4';
+
+        return (
+          <div className="space-y-4">
+            {cards.length > 0 && (
+              <div className={`grid ${gridCols} gap-4`}>
+                {cards.map(c => {
+                  const isActive = c.targetStatus !== '' && statusFilter === c.targetStatus;
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => handleStatusCardFilter(c.targetStatus)}
+                      title={c.targetStatus ? `Filter by ${c.title}` : 'Show all direct expenses'}
+                      className={`text-left w-full cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br ${c.gradient} p-5 shadow-lg hover:shadow-xl hover:brightness-105 transition-[box-shadow,filter] duration-150 focus:outline-none text-white ${isActive ? 'ring-2 ring-slate-900/25 ring-offset-2 ring-offset-slate-100 shadow-xl' : ''}`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-medium ${c.titleColor} uppercase tracking-wider`}>{c.title}</span>
+                        <div className={`p-1.5 rounded-lg ${c.iconBg}`}>{c.icon}</div>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-3xl font-extrabold leading-tight">{c.count}</div>
+                        {isActive && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/25 text-white leading-none">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <div className={`text-xs ${c.subColor} mt-1`}>{c.subtitle}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {showTally && (
+              <TallyBreakdownBar
+                title="Direct Expense Breakdown"
+                subtitle={statusFilter ? 'Click any stage below to switch filter, or click Total to clear' : 'Complete lifecycle breakdown making up Total Requests'}
+                total={totalCount}
+                segments={breakdownSegments}
+                activeStatus={statusFilter}
+                onSegmentClick={(seg) => handleStatusCardFilter(seg.status)}
+                onTotalClick={() => setStatusFilter('')}
+              />
+            )}
           </div>
-          <div className="text-3xl font-extrabold">{completedCount}</div>
-          <div className="text-xs text-teal-100 mt-1">Fully closed</div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Filters */}
       <Card>
@@ -217,7 +415,7 @@ export default function DirectExpenseList() {
             <label className="text-xs font-semibold text-slate-600 mb-1 block">Search</label>
             <div className="relative">
               <input
-                placeholder="Request #, purpose, requester..."
+                placeholder="Request #, purpose, requester, IFS voucher..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-200 text-sm bg-white"
@@ -233,7 +431,11 @@ export default function DirectExpenseList() {
             <label className="text-xs font-semibold text-slate-600 mb-1 block">Status</label>
             <select
               value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
+              onChange={e => {
+                const next = e.target.value;
+                if (dashboardStatusLocked && next !== urlStatusParam) setDashboardStatusLocked(false);
+                setStatusFilter(next);
+              }}
               className="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"
             >
               {STATUS_OPTIONS.map(s => (
@@ -290,9 +492,19 @@ export default function DirectExpenseList() {
             </select>
           </div>
 
-          {(search || statusFilter || startDate || endDate || currencyFilter || deptFilter) && (
+          {(hasActiveFilters || fromDashboard) && (
             <button
-              onClick={() => { setSearch(''); setStatusFilter(''); setStartDate(''); setEndDate(''); setCurrencyFilter(''); setDeptFilter(''); }}
+              onClick={() => {
+                setSearch('');
+                setStatusFilter('');
+                setStartDate('');
+                setEndDate('');
+                setDateField('');
+                setCurrencyFilter('');
+                setDeptFilter('');
+                if (canViewAll) setViewAll(true);
+                setSearchParams({}, { replace: true });
+              }}
               className="px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
             >
               Reset
@@ -303,11 +515,11 @@ export default function DirectExpenseList() {
 
       {/* Table */}
       <Card>
-        {loading ? (
+        {initialLoading ? (
           <div className="space-y-3 py-4">
             {[0, 1, 2, 3, 4].map(i => <div key={i} className="h-14 bg-slate-50 rounded-xl animate-pulse" />)}
           </div>
-        ) : items.length === 0 ? (
+        ) : filteredItems.length === 0 ? (
           <div className="text-center py-12 text-slate-400">
             <div className="w-12 h-12 mx-auto mb-3 text-slate-300 flex items-center justify-center">
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -316,10 +528,20 @@ export default function DirectExpenseList() {
             </div>
             <p className="text-base font-semibold text-slate-600">No direct expenses found</p>
             <p className="text-sm mt-1">Try adjusting your filters or submit a new direct expense.</p>
-            <Link to="/direct-expenses/create" className="text-teal-600 font-semibold hover:underline text-sm mt-3 inline-block">Create new direct expense &rarr;</Link>
+            {statusFilter ? (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('')}
+                className="text-teal-600 font-semibold hover:underline text-sm mt-3 inline-block"
+              >
+                Show all statuses
+              </button>
+            ) : (
+              <Link to="/direct-expenses/create" className="text-teal-600 font-semibold hover:underline text-sm mt-3 inline-block">Create new direct expense &rarr;</Link>
+            )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className={`overflow-x-auto transition-opacity duration-150 ${refreshing ? 'opacity-60' : 'opacity-100'}`}>
             <table className="w-full text-sm text-left">
               <thead>
                 <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -328,11 +550,12 @@ export default function DirectExpenseList() {
                   <th className="py-3 px-3">Department</th>
                   <th className="py-3 px-3 text-right">Amount</th>
                   <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-3">IFS Voucher</th>
                   <th className="py-3 px-3 text-right">Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {items.map(de => (
+                {filteredItems.map(de => (
                   <tr key={de.id} className="hover:bg-slate-50/60 transition-colors">
                     <td className="py-3.5 px-3">
                       <Link to={`/direct-expenses/${de.id}`} className="font-bold text-slate-800 hover:text-teal-600 transition-colors">
@@ -346,6 +569,13 @@ export default function DirectExpenseList() {
                     <td className="py-3.5 px-3 text-slate-600 max-w-[160px] truncate" title={de.department || '-'}>{de.department || '-'}</td>
                     <td className="py-3.5 px-3 text-right font-bold text-slate-800 whitespace-nowrap">{formatCurrency(de.amount, de.currency)}</td>
                     <td className="py-3.5 px-3 text-center"><StatusBadge status={de.status} /></td>
+                    <td className="py-3.5 px-3">
+                      <IfsVoucherDisplay
+                        activeVoucher={de.ifs_voucher_number}
+                        cancelledVouchers={de.cancelled_ifs_vouchers}
+                        compact
+                      />
+                    </td>
                     <td className="py-3.5 px-3 text-right text-slate-400 text-xs">{shortDate(de.created_at)}</td>
                   </tr>
                 ))}

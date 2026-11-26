@@ -7,14 +7,22 @@ import {
   getDEDisbursements, getUsers, decideApproval as decideApprovalApi, listApprovers as listApproversApi,
   cashierRejectDE as cashierRejectDEApi, cashierReturnDE as cashierReturnDEApi,
   removeApprovalFromChain,
-  getIfsVoucherEditing, updateDEIfsVoucher
+  getIfsVoucherEditing, updateDEIfsVoucher, cancelDEIfsVoucher
 } from '../services/iouService';
 import { toast as toastify } from 'react-toastify';
 import api from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import FileUploader from '../components/ui/FileUploader';
+import IfsVoucherDisplay from '../components/ui/IfsVoucherDisplay';
+import CancelIfsVoucherModal from '../components/ui/CancelIfsVoucherModal';
 import { AuthContext } from '../contexts/AuthContext';
+import {
+  formatCurrency,
+  roundCurrencyAmount,
+  getCurrencyStep,
+  getCurrencyPlaceholder
+} from '../utils/currency';
 
 /* ── Status Badge ── */
 function StatusBadge({ status }) {
@@ -31,13 +39,6 @@ function StatusBadge({ status }) {
   };
   const label = s === 'PENDING_HOD_ASSIGNMENT' ? 'Awaiting Approver Assignment' : s === 'DISBURSEMENT_CONFIRMED' ? 'Funds Confirmed' : s.replace(/_/g, ' ');
   return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${colors[s] || 'bg-slate-100 text-slate-700'}`}>{label}</span>;
-}
-
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try { return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n); }
-  catch { return `${currency} ${Number(n).toFixed(2)}`; }
 }
 
 function shortDate(dt) {
@@ -108,11 +109,10 @@ export default function DirectExpenseDetail() {
   const [approverNames, setApproverNames] = useState({});
   const [deIfsVoucher, setDeIfsVoucher] = useState('');
 
-  // IFS Voucher inline editing
+  // IFS Voucher inline editing & cancellation
   const [ifsEditEnabled, setIfsEditEnabled] = useState(false);
-  const [editingIfsVoucher, setEditingIfsVoucher] = useState(false);
-  const [editIfsValue, setEditIfsValue] = useState('');
-  const [savingIfs, setSavingIfs] = useState(false);
+  const [showCancelIfsModal, setShowCancelIfsModal] = useState(false);
+  const [cancellingIfs, setCancellingIfs] = useState(false);
 
   // Cashier return modal
   const [showCashierReturnModal, setShowCashierReturnModal] = useState(false);
@@ -199,22 +199,33 @@ export default function DirectExpenseDetail() {
 
   // Check IFS voucher editing setting
   useEffect(() => {
-    if (user?.is_cashier || user?.is_admin) {
+    if (user?.is_admin || user?.role === 'cashier') {
       getIfsVoucherEditing().then(r => setIfsEditEnabled(r.data?.enabled || false)).catch(() => {});
     }
   }, [user]);
 
-  async function handleSaveIfsVoucher() {
-    if (!editIfsValue.trim()) { toastify.error('IFS Voucher Number is required'); return; }
-    setSavingIfs(true);
+  async function handleSaveIfsVoucher(newVal) {
     try {
-      await updateDEIfsVoucher(id, editIfsValue.trim());
+      await updateDEIfsVoucher(id, newVal);
       toastify.success('IFS Voucher Number updated successfully.');
-      setEditingIfsVoucher(false);
       await load();
     } catch (err) {
       toastify.error(err?.response?.data?.message || 'Failed to update IFS Voucher Number');
-    } finally { setSavingIfs(false); }
+    }
+  }
+
+  async function handleCancelIfsVoucher({ new_ifs_voucher_number, reason }) {
+    setCancellingIfs(true);
+    try {
+      const res = await cancelDEIfsVoucher(id, { new_ifs_voucher_number, reason });
+      toastify.success(res.data?.message || 'IFS Voucher cancelled and replaced.');
+      setShowCancelIfsModal(false);
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to cancel IFS Voucher Number');
+    } finally {
+      setCancellingIfs(false);
+    }
   }
 
   async function handleAction(action, data = {}) {
@@ -322,15 +333,16 @@ export default function DirectExpenseDetail() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Amount ({editCurrency}) <span className="text-red-500">*</span></label>
-              <input type="number" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-200 text-sm font-medium" />
+              <input type="number" step={getCurrencyStep(editCurrency)} placeholder={getCurrencyPlaceholder(editCurrency)} value={editAmount} onChange={e => setEditAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-200 text-sm font-medium" />
             </div>
             <div className="flex gap-2">
               <Button onClick={async () => {
                 if (!editPurpose.trim()) { toastify.error('Purpose is required'); return; }
-                if (!editAmount || isNaN(editAmount) || Number(editAmount) <= 0) { toastify.error('Enter a valid amount'); return; }
+                const roundedEditAmount = roundCurrencyAmount(Number(editAmount), editCurrency);
+                if (!editAmount || isNaN(editAmount) || roundedEditAmount <= 0) { toastify.error('Enter a valid amount greater than 0'); return; }
                 setActionLoading(true);
                 try {
-                  const res = await updateDirectExpense(id, { purpose: editPurpose, amount: Number(editAmount), currency: editCurrency, attachments });
+                  const res = await updateDirectExpense(id, { purpose: editPurpose, amount: roundedEditAmount, currency: editCurrency, attachments });
                   setDe(res.data.directExpense);
                   setAttachments(res.data.attachments || []);
                   setIsEditing(false);
@@ -349,52 +361,21 @@ export default function DirectExpenseDetail() {
             <DetailItem label="Department" value={de.department || '-'} />
             <DetailItem label="Created" value={shortDate(de.created_at)} />
             <DetailItem label="Submitted" value={shortDate(de.submitted_at)} />
-            {de.ifs_voucher_number && (
-              editingIfsVoucher ? (
-                <div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher #</div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      value={editIfsValue}
-                      onChange={e => setEditIfsValue(e.target.value)}
-                      className="px-2 py-1 rounded border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 w-40"
-                      autoFocus
-                    />
-                    <button onClick={handleSaveIfsVoucher} disabled={savingIfs} className="px-2 py-1 rounded bg-teal-600 text-white text-xs font-medium hover:bg-teal-700 disabled:opacity-50">
-                      {savingIfs ? 'Saving...' : 'Save'}
-                    </button>
-                    <button onClick={() => setEditingIfsVoucher(false)} className="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-300">
-                      Cancel
-                    </button>
-                  </div>
+            {(de.ifs_voucher_number || (Array.isArray(de.cancelled_ifs_vouchers) && de.cancelled_ifs_vouchers.length > 0)) && (
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher #</div>
+                <div className="mt-0.5">
+                  <IfsVoucherDisplay
+                    activeVoucher={de.ifs_voucher_number}
+                    cancelledVouchers={de.cancelled_ifs_vouchers}
+                    canEdit={ifsEditEnabled && isCashier}
+                    canCancel={isCashier}
+                    onSaveEdit={handleSaveIfsVoucher}
+                    onCancelClick={() => setShowCancelIfsModal(true)}
+                    accent="teal"
+                  />
                 </div>
-              ) : (
-                <div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher #</div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <a
-                      href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline inline-flex items-center gap-1 font-semibold text-sm"
-                    >
-                      {de.ifs_voucher_number}
-                      <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
-                    {ifsEditEnabled && (user?.is_cashier || user?.is_admin) && (
-                      <button
-                        onClick={() => { setEditIfsValue(de.ifs_voucher_number); setEditingIfsVoucher(true); }}
-                        className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-teal-600"
-                        title="Edit IFS Voucher Number"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
+              </div>
             )}
           </div>
         )}
@@ -600,8 +581,8 @@ export default function DirectExpenseDetail() {
         />
       )}
 
-      {/* Cashier: Confirm Approval */}
-      {isCashier && status === 'PENDING' && deApprovals.length > 0 && deApprovals.every(a => a.decision === 'APPROVED') && (
+      {/* Cashier: Confirm Approval - only when at least 2 approvals exist and ALL are APPROVED */}
+      {isCashier && status === 'PENDING' && deApprovals.length >= 2 && deApprovals.every(a => a.decision === 'APPROVED') && (
         <Card title="Confirm Approval">
           <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 mb-3">
             <p className="text-sm text-emerald-800 font-medium">✓ All {deApprovals.length} approver(s) have approved this Direct Expense.</p>
@@ -717,6 +698,16 @@ export default function DirectExpenseDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Cancel & Replace IFS Voucher Modal ── */}
+      <CancelIfsVoucherModal
+        isOpen={showCancelIfsModal}
+        currentVoucher={de.ifs_voucher_number}
+        requestNumber={de.request_number}
+        onClose={() => setShowCancelIfsModal(false)}
+        onConfirm={handleCancelIfsVoucher}
+        loading={cancellingIfs}
+      />
     </div>
   );
 }
@@ -900,6 +891,11 @@ function AssignApproversPanel({ deId, requesterId, existingApprovals, approverNa
               <span className={`ml-auto text-xs font-semibold ${a.decision === 'APPROVED' ? 'text-emerald-600' : 'text-amber-500'}`}>{a.decision}</span>
             </div>
           ))}
+          {occupied.length === 1 && occupied.every(a => a.decision === 'APPROVED') && (
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+              Step 1 has approved, but at least 2 approvers are required before approval can be confirmed. Please assign at least 1 additional approver below.
+            </div>
+          )}
         </div>
       )}
 
@@ -987,7 +983,7 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, onReturn, loadi
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Amount ({currency}) <span className="text-red-500">*</span></label>
-            <input type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-teal-200" />
+            <input type="number" step={getCurrencyStep(currency)} placeholder={getCurrencyPlaceholder(currency)} value={amount} onChange={e => setAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-teal-200" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Payment Method</label>
@@ -1016,10 +1012,11 @@ function DisbursePanel({ amount: deAmount, currency, onDisburse, onReturn, loadi
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Button onClick={() => {
-            if (!amount || isNaN(amount) || Number(amount) <= 0) { toastify.error('Enter a valid amount'); return; }
+            const roundedAmount = roundCurrencyAmount(Number(amount), currency);
+            if (!amount || isNaN(amount) || roundedAmount <= 0) { toastify.error('Enter a valid amount greater than 0'); return; }
             if (!ifsVoucher || !ifsVoucher.trim()) { toastify.error('IFS Voucher Number is required to disburse funds'); return; }
             onDisburse({
-              amount: Number(amount),
+              amount: roundedAmount,
               payment_method: method || null,
               payment_reference: reference || null,
               ifs_voucher_number: ifsVoucher.trim(),

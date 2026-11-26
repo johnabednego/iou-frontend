@@ -10,14 +10,22 @@ import {
   getDisbursements, getExpense, getUsers, decideApproval as decideApprovalApi, listApprovers as listApproversApi,
   cashierRejectIOU as cashierRejectIOUApi, cashierReturnIOU as cashierReturnIOUApi,
   removeApprovalFromChain,
-  getIfsVoucherEditing, updateIOUIfsVoucher
+  getIfsVoucherEditing, updateIOUIfsVoucher, cancelIOUIfsVoucher
 } from '../services/iouService';
 import { toast as toastify } from 'react-toastify';
 import api from '../services/api';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import FileUploader from '../components/ui/FileUploader';
+import IfsVoucherDisplay from '../components/ui/IfsVoucherDisplay';
+import CancelIfsVoucherModal from '../components/ui/CancelIfsVoucherModal';
 import { AuthContext } from '../contexts/AuthContext';
+import {
+  formatCurrency,
+  roundCurrencyAmount,
+  getCurrencyStep,
+  getCurrencyPlaceholder
+} from '../utils/currency';
 
 /* ── Status Badge ── */
 function StatusBadge({ status }) {
@@ -37,16 +45,6 @@ function StatusBadge({ status }) {
   };
   const label = s === 'PENDING_HOD_ASSIGNMENT' ? 'Awaiting Approver Assignment' : s.replace(/_/g, ' ');
   return <span className={`px-3 py-1 rounded-full text-xs font-semibold ${colors[s] || 'bg-slate-100 text-slate-700'}`}>{label}</span>;
-}
-
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
 }
 
 function shortDate(dt) {
@@ -114,11 +112,10 @@ export default function IOUDetail() {
   const [editAmount, setEditAmount] = useState('');
   const [editCurrency, setEditCurrency] = useState('GHS');
 
-  // IFS Voucher inline editing
+  // IFS Voucher inline editing & cancellation
   const [ifsEditEnabled, setIfsEditEnabled] = useState(false);
-  const [editingIfsVoucher, setEditingIfsVoucher] = useState(false);
-  const [editIfsValue, setEditIfsValue] = useState('');
-  const [savingIfs, setSavingIfs] = useState(false);
+  const [showCancelIfsModal, setShowCancelIfsModal] = useState(false);
+  const [cancellingIfs, setCancellingIfs] = useState(false);
 
   // Approver name cache
   const [approverNames, setApproverNames] = useState({});
@@ -240,22 +237,33 @@ export default function IOUDetail() {
 
   // Check IFS voucher editing setting
   useEffect(() => {
-    if (user?.is_cashier || user?.is_admin) {
+    if (user?.is_admin || user?.role === 'cashier') {
       getIfsVoucherEditing().then(r => setIfsEditEnabled(r.data?.enabled || false)).catch(() => {});
     }
   }, [user]);
 
-  async function handleSaveIfsVoucher() {
-    if (!editIfsValue.trim()) { toastify.error('IFS Voucher Number is required'); return; }
-    setSavingIfs(true);
+  async function handleSaveIfsVoucher(newVal) {
     try {
-      await updateIOUIfsVoucher(id, editIfsValue.trim());
+      await updateIOUIfsVoucher(id, newVal);
       toastify.success('IFS Voucher Number updated successfully.');
-      setEditingIfsVoucher(false);
       await load();
     } catch (err) {
       toastify.error(err?.response?.data?.message || 'Failed to update IFS Voucher Number');
-    } finally { setSavingIfs(false); }
+    }
+  }
+
+  async function handleCancelIfsVoucher({ new_ifs_voucher_number, reason }) {
+    setCancellingIfs(true);
+    try {
+      const res = await cancelIOUIfsVoucher(id, { new_ifs_voucher_number, reason });
+      toastify.success(res.data?.message || 'IFS Voucher cancelled and replaced.');
+      setShowCancelIfsModal(false);
+      await load();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to cancel IFS Voucher Number');
+    } finally {
+      setCancellingIfs(false);
+    }
   }
 
   async function handleAction(action, data = {}) {
@@ -378,7 +386,8 @@ export default function IOUDetail() {
               <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Estimated Amount ({editCurrency}) <span className="text-red-500">*</span></label>
               <input
                 type="number"
-                step="0.01"
+                step={getCurrencyStep(editCurrency)}
+                placeholder={getCurrencyPlaceholder(editCurrency)}
                 value={editAmount}
                 onChange={e => setEditAmount(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm font-medium"
@@ -403,7 +412,8 @@ export default function IOUDetail() {
                   toastify.error('Purpose is required');
                   return;
                 }
-                if (!editAmount || isNaN(editAmount) || Number(editAmount) <= 0) {
+                const roundedEditAmount = roundCurrencyAmount(Number(editAmount), editCurrency);
+                if (!editAmount || isNaN(editAmount) || roundedEditAmount <= 0) {
                   toastify.error('Enter a valid amount greater than 0');
                   return;
                 }
@@ -412,7 +422,7 @@ export default function IOUDetail() {
                 try {
                   const res = await updateIOU(id, {
                     purpose: editPurpose,
-                    estimated_amount: Number(editAmount),
+                    estimated_amount: roundedEditAmount,
                     currency: editCurrency,
                     attachments: attachments
                   });
@@ -439,50 +449,20 @@ export default function IOUDetail() {
             <DetailItem label="Department" value={iou.department || '-'} />
             <DetailItem label="Created" value={shortDate(iou.created_at)} />
             <DetailItem label="Submitted" value={shortDate(iou.submitted_at)} />
-            {iou.ifs_voucher_number && (
-              editingIfsVoucher ? (
-                <div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher Number</div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      value={editIfsValue}
-                      onChange={e => setEditIfsValue(e.target.value)}
-                      className="px-2 py-1 rounded border border-blue-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 w-40"
-                      autoFocus
-                    />
-                    <button onClick={handleSaveIfsVoucher} disabled={savingIfs} className="px-2 py-1 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
-                      {savingIfs ? 'Saving...' : 'Save'}
-                    </button>
-                    <button onClick={() => setEditingIfsVoucher(false)} className="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs font-medium hover:bg-slate-300">
-                      Cancel
-                    </button>
-                  </div>
+            {(iou.ifs_voucher_number || (Array.isArray(iou.cancelled_ifs_vouchers) && iou.cancelled_ifs_vouchers.length > 0)) && (
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher Number</div>
+                <div className="mt-0.5">
+                  <IfsVoucherDisplay
+                    activeVoucher={iou.ifs_voucher_number}
+                    cancelledVouchers={iou.cancelled_ifs_vouchers}
+                    canEdit={ifsEditEnabled && isCashier}
+                    canCancel={isCashier}
+                    onSaveEdit={handleSaveIfsVoucher}
+                    onCancelClick={() => setShowCancelIfsModal(true)}
+                  />
                 </div>
-              ) : (
-                <div>
-                  <div className="text-xs text-slate-500 uppercase tracking-wider">IFS Voucher Number</div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <a
-                      href={'https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application'}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline inline-flex items-center gap-1 font-semibold text-sm"
-                    >
-                      {iou.ifs_voucher_number}
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                    </a>
-                    {ifsEditEnabled && (user?.is_cashier || user?.is_admin) && (
-                      <button
-                        onClick={() => { setEditIfsValue(iou.ifs_voucher_number); setEditingIfsVoucher(true); }}
-                        className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-blue-600"
-                        title="Edit IFS Voucher Number"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
+              </div>
             )}
           </div>
         )}
@@ -739,38 +719,44 @@ export default function IOUDetail() {
         />
       )}
 
-      {/* Cashier: Confirm Approval - when all approvals are APPROVED */}
-      {isCashier && status === 'PENDING' && approvals.length > 0 && approvals.every(a => a.decision === 'APPROVED') && (
-        <Card title="Confirm Approval">
-          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 mb-3">
-            <p className="text-sm text-emerald-800 font-medium">✓ All {approvals.length} approver(s) have approved this IOU.</p>
-            <p className="text-sm text-emerald-700 mt-1">Click below to finalize and move to disbursement, or return to requester if changes are needed.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button onClick={async () => {
-              setActionLoading(true);
-              try {
-                const res = await confirmApprovalApi(id);
-                toastify.success(res?.data?.message || 'Approval confirmed!');
-                await load();
-              } catch (err) {
-                toastify.error(err?.response?.data?.message || 'Failed to confirm');
-              } finally { setActionLoading(false); }
-            }} disabled={actionLoading}>
-              {actionLoading ? 'Confirming...' : '✓ Confirm Approval - Proceed to Disbursement'}
-            </Button>
-            <button
-              type="button"
-              onClick={() => { setCashierReturnComments(''); setShowCashierReturnModal(true); }}
-              disabled={actionLoading}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
-              Return for Edits
-            </button>
-          </div>
-        </Card>
-      )}
+      {/* Cashier: Confirm Approval - only when at least 2 approvals exist and ALL are APPROVED */}
+      {(() => {
+        const iouApprovals = approvals.filter(a => !a.approval_type || a.approval_type === 'iou');
+        if (!isCashier || status !== 'PENDING' || iouApprovals.length < 2 || !iouApprovals.every(a => a.decision === 'APPROVED')) {
+          return null;
+        }
+        return (
+          <Card title="Confirm Approval">
+            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200 mb-3">
+              <p className="text-sm text-emerald-800 font-medium">✓ All {iouApprovals.length} approver(s) have approved this IOU.</p>
+              <p className="text-sm text-emerald-700 mt-1">Click below to finalize and move to disbursement, or return to requester if changes are needed.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={async () => {
+                setActionLoading(true);
+                try {
+                  const res = await confirmApprovalApi(id);
+                  toastify.success(res?.data?.message || 'Approval confirmed!');
+                  await load();
+                } catch (err) {
+                  toastify.error(err?.response?.data?.message || 'Failed to confirm');
+                } finally { setActionLoading(false); }
+              }} disabled={actionLoading}>
+                {actionLoading ? 'Confirming...' : '✓ Confirm Approval - Proceed to Disbursement'}
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setCashierReturnComments(''); setShowCashierReturnModal(true); }}
+                disabled={actionLoading}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                Return for Edits
+              </button>
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* Cashier: Disburse */}
       {isCashier && status === 'APPROVED_FOR_DISBURSEMENT' && (
@@ -944,6 +930,16 @@ export default function IOUDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Cancel & Replace IFS Voucher Modal ── */}
+      <CancelIfsVoucherModal
+        isOpen={showCancelIfsModal}
+        currentVoucher={iou.ifs_voucher_number}
+        requestNumber={iou.request_number}
+        onClose={() => setShowCancelIfsModal(false)}
+        onConfirm={handleCancelIfsVoucher}
+        loading={cancellingIfs}
+      />
     </div>
   );
 }
@@ -1015,10 +1011,16 @@ function InlineApprovalActions({ approvalId, iouId, onDecided, isExpense = false
 
 /* ── Assign Approvers Panel - with validation + cashier reject/return ── */
 function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existingApprovals, approverNames, onAssigned, iouStatus, onStatusChanged }) {
-  const occupiedApprovals = (existingApprovals || []).filter(a => a.approval_type === 'iou');
+  const occupiedApprovals = (existingApprovals || []).filter(a => !a.approval_type || a.approval_type === 'iou');
   const startStep = occupiedApprovals.length + 1;
+  const initialRows = occupiedApprovals.length === 0
+    ? [
+      { approver_id: '', step_order: 1, display_name: '' },
+      { approver_id: '', step_order: 2, display_name: '' }
+    ]
+    : [{ approver_id: '', step_order: startStep, display_name: '' }];
 
-  const [rows, setRows] = useState([{ approver_id: '', step_order: startStep, display_name: '' }]);
+  const [rows, setRows] = useState(initialRows);
   const [hodUsers, setHodUsers] = useState([]);
   const [managedApprovers, setManagedApprovers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -1031,8 +1033,15 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
   const [actioning, setActioning] = useState(false);
 
   useEffect(() => {
-    setRows([{ approver_id: '', step_order: startStep, display_name: '' }]);
-  }, [startStep]);
+    setRows(
+      occupiedApprovals.length === 0
+        ? [
+          { approver_id: '', step_order: 1, display_name: '' },
+          { approver_id: '', step_order: 2, display_name: '' }
+        ]
+        : [{ approver_id: '', step_order: startStep, display_name: '' }]
+    );
+  }, [startStep, occupiedApprovals.length]);
 
   useEffect(() => {
     async function loadEligibleUsers() {
@@ -1053,10 +1062,13 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
     loadEligibleUsers();
   }, []);
 
+  const minRowsAllowed = occupiedApprovals.length === 0 ? 2 : 1;
+
   function removeRow(idx) {
+    if (rows.length <= minRowsAllowed) return;
     const remaining = rows.filter((_, i) => i !== idx);
     const recalculated = remaining.map((r, i) => ({ ...r, step_order: startStep + i }));
-    setRows(recalculated.length > 0 ? recalculated : [{ approver_id: '', step_order: startStep, display_name: '' }]);
+    setRows(recalculated);
   }
 
   function addRow() {
@@ -1065,18 +1077,18 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
 
   async function handleAssign() {
     const valid = rows.filter(r => r.approver_id);
-    if (occupiedApprovals.length === 0 && valid.length === 0) {
-      toastify.error('Please select at least one approver');
-      return;
-    }
-
     const allApprovers = [
       ...occupiedApprovals.map(a => ({ approver_id: a.approver_id, step_order: a.step_order })),
       ...valid.map(r => ({ approver_id: r.approver_id, step_order: r.step_order }))
     ];
 
     if (allApprovers.length === 0) {
-      toastify.error('Please select at least one approver');
+      toastify.error('Please select at least 2 approvers');
+      return;
+    }
+
+    if (allApprovers.length < 2) {
+      toastify.error('At least 2 approvers are required (1 Head of Department + at least 1 additional approver).');
       return;
     }
 
@@ -1152,10 +1164,15 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
 
         <p className="text-sm text-slate-600 mb-3">
           {occupiedApprovals.length === 0
-            ? 'Assign the Head of Department as Step 1, then additional approvers from the Approvers list in order. Only the first pending approver will be notified.'
-            : `Assign additional approvers from the Approvers list in order (starting from Step ${startStep}). Only the next pending approver will be notified.`
+            ? 'Assign at least 2 approvers: the Head of Department as Step 1, plus additional approvers from the Approvers list in order. Only the first pending approver will be notified.'
+            : `Assign additional approvers from the Approvers list in order (starting from Step ${startStep}). Minimum 2 total approvers required before confirmation. Only the next pending approver will be notified.`
           }
         </p>
+        {occupiedApprovals.length === 1 && occupiedApprovals.every(a => a.decision === 'APPROVED') && (
+          <div className="mb-3 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+            Step 1 has approved, but at least 2 approvers are required before this IOU can be confirmed for disbursement. Please assign at least 1 more approver below.
+          </div>
+        )}
 
         <div className="space-y-3">
           {rows.map((r, idx) => {
@@ -1214,18 +1231,24 @@ function AssignApproversPanel({ iouId, requesterId, requesterDepartment, existin
                     })}
                   </select>
                 </div>
-                {rows.length > 1 && (
+                {rows.length > minRowsAllowed && (
                   <button onClick={() => removeRow(idx)} className="text-red-400 hover:text-red-600 text-sm flex-shrink-0">Remove</button>
                 )}
               </div>
             );
           })}
         </div>
-        <div className="flex gap-2 mt-4">
+        <div className="flex flex-wrap items-center gap-2 mt-4">
           <button onClick={addRow} className="px-3 py-2 bg-white rounded-lg border border-slate-200 text-sm hover:bg-slate-50">+ Add Approver</button>
-          <Button onClick={handleAssign} disabled={submitting || (occupiedApprovals.length === 0 && rows.every(r => !r.approver_id))}>
+          <Button
+            onClick={handleAssign}
+            disabled={submitting || (occupiedApprovals.length + rows.filter(r => r.approver_id).length) < 2}
+          >
             {submitting ? 'Assigning...' : 'Assign Approvers'}
           </Button>
+          {(occupiedApprovals.length + rows.filter(r => r.approver_id).length) < 2 && (
+            <span className="text-xs text-amber-600 font-medium">Minimum 2 approvers required in total</span>
+          )}
         </div>
 
         {/* Cashier: Reject or Return at any pending stage */}
@@ -1426,10 +1449,12 @@ function ExpensePanel({ currency = 'GHS', onSubmit, loading }) {
 
   function handleSubmit() {
     if (!actualAmount) { setError('Actual amount is required'); return; }
+    const roundedActual = roundCurrencyAmount(Number(actualAmount), currency);
+    if (isNaN(Number(actualAmount)) || roundedActual <= 0) { setError('Actual amount must be greater than 0 after rounding'); return; }
     if (expAttachments.length === 0) { setError('At least one attachment (receipt/supporting document) is required'); return; }
     setError('');
     onSubmit({
-      actual_amount: Number(actualAmount), notes,
+      actual_amount: roundedActual, notes,
       attachments: expAttachments.map(a => ({ file_name: a.file_name, file_path: a.file_path, blob_name: a.blob_name, content_type: a.content_type, size: a.size }))
     });
   }
@@ -1441,7 +1466,7 @@ function ExpensePanel({ currency = 'GHS', onSubmit, loading }) {
       <div className="space-y-4">
         <div>
           <label className="block text-sm text-slate-700 mb-1">Actual Amount ({currency}) <span className="text-red-500">*</span></label>
-          <input type="number" step="0.01" value={actualAmount} onChange={e => setActualAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          <input type="number" step={getCurrencyStep(currency)} placeholder={getCurrencyPlaceholder(currency)} value={actualAmount} onChange={e => setActualAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
         </div>
         <div>
           <label className="block text-sm text-slate-700 mb-1">Notes</label>
@@ -1497,10 +1522,12 @@ function EditExpensePanel({ expense, expenseApprovals = [], approverNames = {}, 
 
   function handleSubmit() {
     if (!actualAmount) { setError('Actual amount is required'); return; }
+    const roundedActual = roundCurrencyAmount(Number(actualAmount), currency);
+    if (isNaN(Number(actualAmount)) || roundedActual <= 0) { setError('Actual amount must be greater than 0 after rounding'); return; }
     if (expAttachments.length === 0) { setError('At least one attachment is required'); return; }
     setError('');
     onSubmit({
-      actual_amount: Number(actualAmount), notes,
+      actual_amount: roundedActual, notes,
       attachments: expAttachments.map(a => ({ file_name: a.file_name, file_path: a.file_path, blob_name: a.blob_name, content_type: a.content_type, size: a.size }))
     });
   }
@@ -1523,7 +1550,7 @@ function EditExpensePanel({ expense, expenseApprovals = [], approverNames = {}, 
       <div className="space-y-4">
         <div>
           <label className="block text-sm text-slate-700 mb-1">Actual Amount ({currency}) <span className="text-red-500">*</span></label>
-          <input type="number" step="0.01" value={actualAmount} onChange={e => setActualAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+          <input type="number" step={getCurrencyStep(currency)} placeholder={getCurrencyPlaceholder(currency)} value={actualAmount} onChange={e => setActualAmount(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200" />
         </div>
         <div>
           <label className="block text-sm text-slate-700 mb-1">Notes</label>
@@ -1573,15 +1600,28 @@ function EditExpensePanel({ expense, expenseApprovals = [], approverNames = {}, 
 function AssignExpenseApproversPanel({ iouId, requesterId, existingApprovals, approverNames, onAssigned }) {
   const occupiedApprovals = (existingApprovals || []).filter(a => a.approval_type === 'expense');
   const startStep = occupiedApprovals.length + 1;
+  const initialRows = occupiedApprovals.length === 0
+    ? [
+      { approver_id: '', step_order: 1, display_name: '' },
+      { approver_id: '', step_order: 2, display_name: '' }
+    ]
+    : [{ approver_id: '', step_order: startStep, display_name: '' }];
 
-  const [rows, setRows] = useState([{ approver_id: '', step_order: startStep, display_name: '' }]);
+  const [rows, setRows] = useState(initialRows);
   const [managedApprovers, setManagedApprovers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    setRows([{ approver_id: '', step_order: startStep, display_name: '' }]);
-  }, [startStep]);
+    setRows(
+      occupiedApprovals.length === 0
+        ? [
+          { approver_id: '', step_order: 1, display_name: '' },
+          { approver_id: '', step_order: 2, display_name: '' }
+        ]
+        : [{ approver_id: '', step_order: startStep, display_name: '' }]
+    );
+  }, [startStep, occupiedApprovals.length]);
 
   useEffect(() => {
     async function loadManagedApprovers() {
@@ -1602,10 +1642,13 @@ function AssignExpenseApproversPanel({ iouId, requesterId, existingApprovals, ap
     setRows(s => [...s, { approver_id: '', step_order: startStep + s.length, display_name: '' }]);
   }
 
+  const minExpRowsAllowed = occupiedApprovals.length === 0 ? 2 : 1;
+
   function removeRow(idx) {
+    if (rows.length <= minExpRowsAllowed) return;
     const remaining = rows.filter((_, i) => i !== idx);
     const recalculated = remaining.map((r, i) => ({ ...r, step_order: startStep + i }));
-    setRows(recalculated.length > 0 ? recalculated : [{ approver_id: '', step_order: startStep, display_name: '' }]);
+    setRows(recalculated);
   }
 
   async function handleAssign() {
@@ -1700,7 +1743,7 @@ function AssignExpenseApproversPanel({ iouId, requesterId, existingApprovals, ap
                   ))}
                 </select>
               </div>
-              {rows.length > 1 && <button onClick={() => removeRow(idx)} className="text-red-400 hover:text-red-600 text-sm flex-shrink-0">Remove</button>}
+              {rows.length > minExpRowsAllowed && <button onClick={() => removeRow(idx)} className="text-red-400 hover:text-red-600 text-sm flex-shrink-0">Remove</button>}
             </div>
           );
         })}
@@ -1740,9 +1783,9 @@ function RejectExpensePanel({ onReject, loading }) {
 function ReconcilePanel({ iou, expense, currency = 'GHS', onReconcile, onReturnExpense, loading }) {
   const [notes, setNotes] = useState('');
   const [ifsVoucherNumber, setIfsVoucherNumber] = useState('');
-  const estimated = parseFloat(iou.estimated_amount) || 0;
-  const actual = parseFloat(expense.actual_amount) || 0;
-  const diff = actual - estimated;
+  const estimated = roundCurrencyAmount(parseFloat(iou.estimated_amount) || 0, currency);
+  const actual = roundCurrencyAmount(parseFloat(expense.actual_amount) || 0, currency);
+  const diff = roundCurrencyAmount(actual - estimated, currency);
 
   return (
     <Card title="Reconciliation">
@@ -1864,18 +1907,13 @@ function RedeemPanel({ iou, expense, reconciliation, disbursements, onRedeem, lo
             ✓ Exact match - no additional action needed.
           </div>
         )}
-        {(reconciliation?.ifs_voucher_number || iou?.ifs_voucher_number) && (
-          <div className="pt-2 border-t border-green-200/60 flex items-center gap-2 text-sm text-slate-700">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">IFS Voucher:</span>
-            <a
-              href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 font-mono font-bold hover:underline inline-flex items-center gap-1"
-            >
-              {reconciliation?.ifs_voucher_number || iou?.ifs_voucher_number}
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-            </a>
+        {(reconciliation?.ifs_voucher_number || iou?.ifs_voucher_number || (Array.isArray(iou?.cancelled_ifs_vouchers) && iou.cancelled_ifs_vouchers.length > 0)) && (
+          <div className="pt-2 border-t border-green-200/60 flex items-start gap-2 text-sm text-slate-700">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 mt-0.5">IFS Voucher:</span>
+            <IfsVoucherDisplay
+              activeVoucher={reconciliation?.ifs_voucher_number || iou?.ifs_voucher_number}
+              cancelledVouchers={iou?.cancelled_ifs_vouchers}
+            />
           </div>
         )}
       </div>

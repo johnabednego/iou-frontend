@@ -1,6 +1,7 @@
 import React, { createContext, useEffect, useState, useRef } from 'react';
 import api from '../services/api';
 import { useNavigate, useLocation } from 'react-router-dom';
+import InactivityMonitor from '../components/InactivityMonitor';
 
 export const AuthContext = createContext();
 
@@ -91,6 +92,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{ user, setUser, login, logout, loading }}>
+      {user && <InactivityMonitor onLogout={logout} />}
       {children}
     </AuthContext.Provider>
   );

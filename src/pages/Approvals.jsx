@@ -3,16 +3,7 @@ import { getMyApprovals, decideApproval } from '../services/iouService';
 import Card from '../components/ui/Card';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-toastify';
-
-function fmt(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
-}
+import { formatCurrency as fmt } from '../utils/currency';
 
 export default function Approvals() {
   const [approvals, setApprovals] = useState([]);

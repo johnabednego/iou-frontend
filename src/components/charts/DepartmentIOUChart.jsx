@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
+import { formatCurrency } from '../../utils/currency';
 
 const COLORS = [
   '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899',
@@ -19,7 +20,7 @@ const CustomTooltip = ({ active, payload, metric }) => {
         Requests: <span className="font-semibold text-white">{d.count}</span>
       </p>
       <p className="text-xs text-emerald-300">
-        Estimated: <span className="font-semibold text-white">GHS {Number(d.total_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        Estimated: <span className="font-semibold text-white">{formatCurrency(d.total_amount, 'GHS')}</span>
       </p>
     </div>
   );

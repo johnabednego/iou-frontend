@@ -8,18 +8,15 @@ import {
   getFundBalances, updateFundBalance, getFundTransactions,
   getCurrencies, addCurrency, deleteCurrency
 } from '../services/iouService';
+import {
+  formatCurrency,
+  roundCurrencyAmount,
+  getCurrencyDecimals,
+  getCurrencyStep,
+  getCurrencyPlaceholder
+} from '../utils/currency';
 
 const CURRENCY_COLORS = { GHS: '#065f46', USD: '#1d4ed8', EUR: '#7c3aed', GBP: '#be185d' };
-
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
-}
 
 const TX_TYPE_BADGES = {
   MANUAL_SET: { label: 'Set Balance', cls: 'bg-blue-100 text-blue-700' },
@@ -86,12 +83,13 @@ export default function FundManagement() {
 
   async function handleUpdateBalance(e) {
     e.preventDefault();
-    const numAmount = Number(amount);
-    if (!selectedCurrency || amount === '' || isNaN(numAmount) || numAmount < 0) {
+    const rawAmount = Number(amount);
+    if (!selectedCurrency || amount === '' || isNaN(rawAmount) || rawAmount < 0) {
       setError('Please select a currency and enter a valid non-negative amount');
       return;
     }
 
+    const numAmount = roundCurrencyAmount(rawAmount, selectedCurrency);
     const curBal = balances.find(b => b.currency === selectedCurrency);
     const currentAmount = curBal ? Number(curBal.available_amount) : 0;
 
@@ -101,7 +99,7 @@ export default function FundManagement() {
     }
 
     if (action === 'decrease' && numAmount > currentAmount) {
-      setError(`Cannot decrease by ${numAmount}. Current balance is ${currentAmount} ${selectedCurrency}. Resulting balance cannot be negative.`);
+      setError(`Cannot decrease by ${formatCurrency(numAmount, selectedCurrency)}. Current balance is ${formatCurrency(currentAmount, selectedCurrency)}. Resulting balance cannot be negative.`);
       return;
     }
 
@@ -110,7 +108,7 @@ export default function FundManagement() {
     setSuccess('');
     try {
       const res = await updateFundBalance(selectedCurrency, { action, amount: numAmount, notes });
-      setSuccess(`${selectedCurrency} balance updated: ${res.data?.balance?.previous_amount} → ${res.data?.balance?.new_amount}`);
+      setSuccess(`${selectedCurrency} balance updated: ${formatCurrency(res.data?.balance?.previous_amount, selectedCurrency)} -> ${formatCurrency(res.data?.balance?.new_amount, selectedCurrency)}`);
       setAmount('');
       setNotes('');
       loadData();
@@ -286,13 +284,22 @@ export default function FundManagement() {
             <input
               type="number"
               min="0"
-              step="0.01"
+              step={getCurrencyStep(selectedCurrency || 'GHS')}
               value={amount}
               onChange={e => setAmount(e.target.value)}
-              placeholder="0.00"
+              placeholder={getCurrencyPlaceholder(selectedCurrency || 'GHS')}
               className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
               required
             />
+            {selectedCurrency && amount !== '' && !isNaN(Number(amount)) && Number(amount) >= 0 && (
+              <p className="text-xs text-slate-500 mt-1">
+                {getCurrencyDecimals(selectedCurrency) === 0
+                  ? `Rounded to whole number: ${formatCurrency(amount, selectedCurrency)}`
+                  : getCurrencyDecimals(selectedCurrency) === 1
+                    ? `Rounded to 1 decimal place: ${formatCurrency(amount, selectedCurrency)}`
+                    : `Formatted: ${formatCurrency(amount, selectedCurrency)}`}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Notes (optional)</label>

@@ -66,10 +66,14 @@ export const getDateLimit = () => api.get('/settings/date-limit');
 export const setDateLimit = (min_date) => api.put('/settings/date-limit', { min_date });
 export const getIfsVoucherEditing = () => api.get('/settings/ifs-voucher-editing');
 export const setIfsVoucherEditing = (enabled) => api.put('/settings/ifs-voucher-editing', { enabled });
+export const getInactivityTimeout = () => api.get('/settings/inactivity-timeout');
+export const setInactivityTimeout = (timeout_minutes) => api.put('/settings/inactivity-timeout', { timeout_minutes });
 
-// IFS Voucher editing
+// IFS Voucher editing & cancellation
 export const updateIOUIfsVoucher = (id, ifs_voucher_number) => api.put(`/ious/${id}/ifs-voucher`, { ifs_voucher_number });
+export const cancelIOUIfsVoucher = (id, data) => api.post(`/ious/${id}/ifs-voucher/cancel`, data);
 export const updateDEIfsVoucher = (id, ifs_voucher_number) => api.put(`/direct-expenses/${id}/ifs-voucher`, { ifs_voucher_number });
+export const cancelDEIfsVoucher = (id, data) => api.post(`/direct-expenses/${id}/ifs-voucher/cancel`, data);
 
 // Export (returns download URL string for use with window.open or anchor)
 export const getExportUrl = (params = {}) => {

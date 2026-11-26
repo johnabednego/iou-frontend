@@ -1,7 +1,14 @@
 import React, { useContext, useEffect, useState } from 'react';
 import Card from '../components/ui/Card';
 import { AuthContext } from '../contexts/AuthContext';
-import { getDateLimit, setDateLimit as setDateLimitApi, getIfsVoucherEditing, setIfsVoucherEditing as setIfsVoucherEditingApi } from '../services/iouService';
+import {
+  getDateLimit,
+  setDateLimit as setDateLimitApi,
+  getIfsVoucherEditing,
+  setIfsVoucherEditing as setIfsVoucherEditingApi,
+  getInactivityTimeout,
+  setInactivityTimeout as setInactivityTimeoutApi
+} from '../services/iouService';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
@@ -21,12 +28,21 @@ export default function Settings() {
   const [ifsMessage, setIfsMessage] = useState('');
   const [ifsError, setIfsError] = useState('');
 
+  // Inactivity timeout state
+  const [timeoutMinutes, setTimeoutMinutes] = useState('5');
+  const [timeoutIsDefault, setTimeoutIsDefault] = useState(true);
+  const [timeoutLoading, setTimeoutLoading] = useState(true);
+  const [timeoutSaving, setTimeoutSaving] = useState(false);
+  const [timeoutMessage, setTimeoutMessage] = useState('');
+  const [timeoutError, setTimeoutError] = useState('');
+
   const todayDate = new Date();
   todayDate.setHours(23, 59, 59, 999);
 
   useEffect(() => {
     loadDateLimit();
     loadIfsVoucherEditing();
+    loadInactivityTimeout();
   }, []);
 
   async function loadDateLimit() {
@@ -55,6 +71,45 @@ export default function Settings() {
       setIfsError('Failed to load IFS voucher editing setting.');
     } finally {
       setIfsLoading(false);
+    }
+  }
+
+  async function loadInactivityTimeout() {
+    setTimeoutLoading(true);
+    try {
+      const res = await getInactivityTimeout();
+      if (res.data?.timeout_minutes != null) {
+        setTimeoutMinutes(String(res.data.timeout_minutes));
+        setTimeoutIsDefault(Boolean(res.data.is_default));
+      }
+    } catch (err) {
+      console.error('Failed to load inactivity timeout setting', err);
+      setTimeoutError('Failed to load inactivity timeout setting.');
+    } finally {
+      setTimeoutLoading(false);
+    }
+  }
+
+  async function handleSaveTimeout() {
+    const mins = parseInt(timeoutMinutes, 10);
+    if (isNaN(mins) || mins < 1 || mins > 480) {
+      setTimeoutError('Please enter a whole number between 1 and 480 minutes.');
+      return;
+    }
+    setTimeoutSaving(true);
+    setTimeoutMessage('');
+    setTimeoutError('');
+    try {
+      const res = await setInactivityTimeoutApi(mins);
+      setTimeoutMinutes(String(mins));
+      setTimeoutIsDefault(false);
+      setTimeoutMessage(res.data?.message || `Inactivity timeout updated to ${mins} minute(s).`);
+      window.dispatchEvent(new CustomEvent('inactivity-timeout-updated', { detail: { timeout_minutes: mins } }));
+    } catch (err) {
+      console.error('Failed to save inactivity timeout', err);
+      setTimeoutError(err?.response?.data?.message || 'Failed to update inactivity timeout.');
+    } finally {
+      setTimeoutSaving(false);
     }
   }
 
@@ -260,6 +315,85 @@ export default function Settings() {
                   <li>Disable it after corrections are complete to prevent accidental edits</li>
                   <li>All edits are logged in the audit trail for accountability</li>
                   <li>Only cashiers and admins can edit IFS Voucher Numbers</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Session Inactivity Auto-Logout Setting */}
+      <Card title="Session Inactivity Auto-Logout">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">
+            Configure how many minutes of inactivity must pass before a session timeout prompt appears.
+            Once prompted, the user has a 1-minute countdown modal to click Extend Session before being automatically logged out.
+          </p>
+
+          {timeoutLoading ? (
+            <div className="h-10 bg-slate-50 rounded animate-pulse" />
+          ) : (
+            <>
+              <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Inactivity Prompt Time (Minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="480"
+                    step="1"
+                    value={timeoutMinutes}
+                    onChange={(e) => {
+                      setTimeoutMinutes(e.target.value);
+                      setTimeoutMessage('');
+                      setTimeoutError('');
+                    }}
+                    className="px-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 text-sm w-full sm:w-48"
+                  />
+                  {timeoutIsDefault && (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Currently using default (5 minutes of inactivity before 1-minute logout countdown).
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={handleSaveTimeout}
+                  disabled={timeoutSaving || !timeoutMinutes}
+                  className="px-5 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-700 text-white text-sm font-medium hover:from-blue-600 hover:to-blue-800 transition-all disabled:opacity-50 shadow-sm"
+                >
+                  {timeoutSaving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+
+              {timeoutMessage && (
+                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm">
+                  {timeoutMessage}
+                </div>
+              )}
+              {timeoutError && (
+                <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {timeoutError}
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <div className="flex items-start gap-3">
+              <div className="text-blue-500 mt-0.5">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </div>
+              <div className="text-sm text-slate-600">
+                <p className="font-medium text-slate-700 mb-1">How automatic logout works</p>
+                <ul className="list-disc list-inside space-y-1 text-xs text-slate-500">
+                  <li>Default timeout is 5 minutes; set to 1 minute to prompt after 1 minute without activity</li>
+                  <li>Once the modal opens, a 1-minute countdown always runs until the user clicks Extend Session</li>
+                  <li>If the user does not extend before the 1-minute countdown finishes, they are automatically logged out</li>
                 </ul>
               </div>
             </div>

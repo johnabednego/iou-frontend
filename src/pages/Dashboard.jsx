@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { exportIOUs, getDateLimit, getDashboardAnalytics, getCurrencies, getFundBalances, getDepartments } from '../services/iouService';
 import Card from '../components/ui/Card';
+import TallyBreakdownBar from '../components/ui/TallyBreakdownBar';
 import { AuthContext } from '../contexts/AuthContext';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -13,6 +14,7 @@ import SpendingPieChart from '../components/charts/SpendingPieChart';
 import StatusDistributionChart from '../components/charts/StatusDistributionChart';
 import ApprovedAmountsChart from '../components/charts/ApprovedAmountsChart';
 import DepartmentIOUChart from '../components/charts/DepartmentIOUChart';
+import { formatCurrency } from '../utils/currency';
 
 /* Sparkline */
 function Sparkline({ data = [], width = 120, height = 28, stroke = '#065f46' }) {
@@ -60,16 +62,6 @@ function Donut({ value = 0, total = 1, size = 56, strokeWidth = 8, color = '#4f4
       </g>
     </svg>
   );
-}
-
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
 }
 
 const CURRENCY_SYMBOLS = { GHS: 'GH₵', USD: '$', EUR: '€', GBP: '£' };
@@ -212,7 +204,11 @@ export default function Dashboard() {
       const rn = (i.request_number || '').toString().toLowerCase();
       const purpose = (i.purpose || '').toString().toLowerCase();
       const requester = ((i.requester && i.requester.display_name) || i.requester_name || '').toString().toLowerCase();
-      return rn.includes(q) || purpose.includes(q) || requester.includes(q);
+      const ifs = (i.ifs_voucher_number || '').toString().toLowerCase();
+      const cancelledIfs = Array.isArray(i.cancelled_ifs_vouchers)
+        ? i.cancelled_ifs_vouchers.map(c => (c?.voucher_number || '').toLowerCase()).join(' ')
+        : '';
+      return rn.includes(q) || purpose.includes(q) || requester.includes(q) || ifs.includes(q) || cancelledIfs.includes(q);
     });
   }, [ious, searchLocal]);
 
@@ -250,7 +246,7 @@ export default function Dashboard() {
     async function load() {
       try {
         const params = {
-          limit: 200,
+          limit: 500,
           status: statusFilter || undefined,
           start_date: startDate || undefined,
           end_date: endDate || undefined,
@@ -299,7 +295,7 @@ export default function Dashboard() {
   // Determine if filters are applied
   const filtersApplied = !!(startDate || endDate || statusFilter || searchLocal.trim() || showApprovedByMe || departmentFilter || spendingFilter || currencyFilter);
 
-  // KPIs computed off the current (server) ious
+  // KPIs computed off the current (filtered) IOUs so all breakdowns tally to totalCount
   const kpis = useMemo(() => {
     const now = new Date();
     const month = now.getMonth();
@@ -307,6 +303,15 @@ export default function Dashboard() {
 
     let pendingCount = 0;
     let approvedThisMonth = 0;
+    let approvedOtherMonths = 0;
+    // Complete mutually exclusive lifecycle buckets summing to filteredIousLocal.length
+    let draftReturnedCount = 0;
+    let readyToDisburseCount = 0;
+    let inProgressCount = 0;
+    let redeemedCount = 0;
+    let rejectedCount = 0;
+    let otherCount = 0;
+
     // Multi-currency approved amounts
     const approvedAmountByCurrency = {};
     let disbursedCount = 0;
@@ -317,28 +322,48 @@ export default function Dashboard() {
     const today0 = new Date();
     today0.setHours(0, 0, 0, 0);
 
-    for (const i of ious) {
-      if (i.status === 'PENDING' || i.status === 'PENDING_HOD_ASSIGNMENT') pendingCount++;
-      if (i.status === 'APPROVED_FOR_DISBURSEMENT') awaitingDisbursement++;
-      if (i.status === 'EXPENSE_SUBMITTED') expenseSubmittedCount++;
-      if (i.status === 'DISBURSED') {
+    const approvedSet = new Set([
+      'APPROVED', 'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'DISBURSEMENT_CONFIRMED',
+      'EXPENSE_PENDING_APPROVAL', 'EXPENSE_SUBMITTED', 'EXPENSE_RETURNED', 'RECONCILED', 'REDEEMED'
+    ]);
+
+    for (const i of filteredIousLocal) {
+      const s = (i.status || '').toUpperCase();
+      if (s === 'PENDING' || s === 'PENDING_HOD_ASSIGNMENT') {
+        pendingCount++;
+      } else if (s === 'DRAFT' || s === 'RETURNED') {
+        draftReturnedCount++;
+      } else if (s === 'APPROVED' || s === 'APPROVED_FOR_DISBURSEMENT') {
+        readyToDisburseCount++;
+      } else if (['DISBURSED', 'DISBURSEMENT_CONFIRMED', 'EXPENSE_PENDING_APPROVAL', 'EXPENSE_SUBMITTED', 'EXPENSE_RETURNED', 'RECONCILED'].includes(s)) {
+        inProgressCount++;
+      } else if (s === 'REDEEMED') {
+        redeemedCount++;
+      } else if (s === 'REJECTED' || s === 'CANCELLED') {
+        rejectedCount++;
+      } else {
+        otherCount++;
+      }
+
+      if (s === 'APPROVED_FOR_DISBURSEMENT') awaitingDisbursement++;
+      if (s === 'EXPENSE_SUBMITTED') expenseSubmittedCount++;
+      if (s === 'DISBURSED') {
         const created = i.updated_at || i.created_at;
         if (created) {
           const d = new Date(created);
           if (filtersApplied || (d.getMonth() === month && d.getFullYear() === year)) disbursedCount++;
         }
       }
-      if (['APPROVED', 'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'DISBURSEMENT_CONFIRMED', 'EXPENSE_PENDING_APPROVAL', 'EXPENSE_SUBMITTED', 'EXPENSE_RETURNED', 'RECONCILED', 'REDEEMED'].includes(i.status)) {
+      if (approvedSet.has(s)) {
         const created = i.updated_at || i.created_at || i.submitted_at;
         if (created) {
           const d = new Date(created);
-          // When filters are applied, count all IOUs from server (already filtered)
-          // When no filters, only count current month
-          const shouldCount = filtersApplied || (d.getMonth() === month && d.getFullYear() === year);
+          const inCurrentMonth = d.getMonth() === month && d.getFullYear() === year;
+          const shouldCount = filtersApplied || inCurrentMonth;
           if (shouldCount) {
             approvedThisMonth++;
             // Use ACTUAL amount for settled IOUs, estimated for in-progress
-            const isSettled = ['RECONCILED', 'REDEEMED'].includes(i.status);
+            const isSettled = ['RECONCILED', 'REDEEMED'].includes(s);
             const expense = (i.expenses && i.expenses.length > 0) ? i.expenses[0] : null;
             const amount = (isSettled && expense && expense.actual_amount != null)
               ? Number(expense.actual_amount)
@@ -347,17 +372,76 @@ export default function Dashboard() {
               const cur = i.currency || 'GHS';
               approvedAmountByCurrency[cur] = (approvedAmountByCurrency[cur] || 0) + amount;
             }
+          } else {
+            approvedOtherMonths++;
           }
           const diff = Math.floor((today0 - (new Date(created)).setHours(0, 0, 0, 0)) / dayMs);
           if (diff >= 0 && diff < 7) {
             perDay[6 - diff] += 1;
           }
+        } else {
+          approvedOtherMonths++;
         }
       }
     }
 
-    return { pendingCount, approvedThisMonth, approvedAmountByCurrency, disbursedCount, awaitingDisbursement, expenseSubmittedCount, sparkData: perDay };
-  }, [ious, filtersApplied]);
+    return {
+      pendingCount,
+      approvedThisMonth,
+      approvedOtherMonths,
+      draftReturnedCount,
+      readyToDisburseCount,
+      inProgressCount,
+      redeemedCount,
+      rejectedCount,
+      otherCount,
+      approvedAmountByCurrency,
+      disbursedCount,
+      awaitingDisbursement,
+      expenseSubmittedCount,
+      sparkData: perDay
+    };
+  }, [filteredIousLocal, filtersApplied]);
+
+  // Direct Expense status buckets summing to deTotal
+  const deKpis = useMemo(() => {
+    const dist = analytics?.deStatusDistribution || [];
+    let deTotal = 0;
+    let deCompleted = 0;
+    let deFundsConfirmed = 0;
+    let deDisbursed = 0;
+    let deReady = 0;
+    let dePending = 0;
+    let deDraftReturned = 0;
+    let deRejected = 0;
+    let deOther = 0;
+
+    for (const row of dist) {
+      const count = row.count || 0;
+      const s = (row.status || '').toUpperCase();
+      deTotal += count;
+      if (s === 'COMPLETED') deCompleted += count;
+      else if (s === 'DISBURSEMENT_CONFIRMED') deFundsConfirmed += count;
+      else if (s === 'DISBURSED') deDisbursed += count;
+      else if (s === 'APPROVED_FOR_DISBURSEMENT') deReady += count;
+      else if (s === 'PENDING' || s === 'PENDING_HOD_ASSIGNMENT') dePending += count;
+      else if (s === 'DRAFT' || s === 'RETURNED') deDraftReturned += count;
+      else if (s === 'REJECTED' || s === 'CANCELLED') deRejected += count;
+      else deOther += count;
+    }
+
+    return {
+      deTotal,
+      deCompleted,
+      deFundsConfirmed,
+      deDisbursed,
+      deReady,
+      dePending,
+      deDraftReturned,
+      deRejected,
+      deOther
+    };
+  }, [analytics]);
 
   // Total count of IOUs (reflects current filters)
   const totalCount = filteredIousLocal.length;
@@ -500,6 +584,63 @@ export default function Dashboard() {
     );
   }
 
+  // Timezone-safe YYYY-MM-DD helpers for current month routing
+  const toYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const currentMonthStartYmd = toYmd(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1));
+  const currentMonthEndYmd = toYmd(new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0));
+  const prevMonthEndYmd = toYmd(new Date(todayDate.getFullYear(), todayDate.getMonth(), 0));
+
+  function buildIouListUrl(overrides = {}) {
+    const qs = new URLSearchParams();
+    qs.set('from', 'dashboard');
+    const st = overrides.status !== undefined ? overrides.status : statusFilter;
+    const dept = overrides.department !== undefined ? overrides.department : departmentFilter;
+    const cur = overrides.currency !== undefined ? overrides.currency : currencyFilter;
+    const sp = overrides.spending !== undefined ? overrides.spending : spendingFilter;
+    const q = overrides.search !== undefined ? overrides.search : searchLocal.trim();
+    const sd = overrides.start_date !== undefined ? overrides.start_date : startDate;
+    const ed = overrides.end_date !== undefined ? overrides.end_date : endDate;
+    const df = overrides.date_field || '';
+    if (st) qs.set('status', st);
+    if (dept) qs.set('department', dept);
+    if (cur) qs.set('currency', cur);
+    if (sp) qs.set('spending', sp);
+    if (q) qs.set('search', q);
+    if (sd) qs.set('start_date', sd);
+    if (ed) qs.set('end_date', ed);
+    if (df) qs.set('date_field', df);
+    if (showApprovedByMe && user?.id) qs.set('approved_by', user.id);
+    if (canSeeAll && !viewModeAll) qs.set('view', 'mine');
+    return `/ious?${qs.toString()}`;
+  }
+
+  function buildDeListUrl(overrides = {}) {
+    const qs = new URLSearchParams();
+    qs.set('from', 'dashboard');
+    const st = overrides.status !== undefined ? overrides.status : '';
+    const dept = overrides.department !== undefined ? overrides.department : departmentFilter;
+    const sd = overrides.start_date || '';
+    const ed = overrides.end_date || '';
+    if (st) qs.set('status', st);
+    if (dept) qs.set('department', dept);
+    if (sd) qs.set('start_date', sd);
+    if (ed) qs.set('end_date', ed);
+    return `/direct-expenses?${qs.toString()}`;
+  }
+
+  const approvedGroupTargetUrl = filtersApplied
+    ? buildIouListUrl({
+      status: ['APPROVED', 'APPROVED_FOR_DISBURSEMENT', 'DISBURSED', 'DISBURSEMENT_CONFIRMED', 'EXPENSE_PENDING_APPROVAL', 'EXPENSE_SUBMITTED', 'EXPENSE_RETURNED', 'RECONCILED', 'REDEEMED'].includes(statusFilter)
+        ? statusFilter
+        : 'APPROVED_GROUP'
+    })
+    : buildIouListUrl({
+      status: 'APPROVED_GROUP',
+      start_date: currentMonthStartYmd,
+      end_date: currentMonthEndYmd,
+      date_field: 'activity'
+    });
+
   return (
     <div className="space-y-6">
       {error && <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm">{error}</div>}
@@ -538,105 +679,206 @@ export default function Dashboard() {
       </section>
 
       {/* === KPI Cards === */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total IOUs */}
-        <div onClick={() => nav('/ious')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg hover:shadow-xl transition-shadow group">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full group-hover:scale-110 transition-transform" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-white/10">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
+      <section className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Total IOUs */}
+          <div onClick={() => nav(buildIouListUrl())} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-700 to-slate-900 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full group-hover:scale-110 transition-transform" />
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-white/10">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total IOUs</span>
               </div>
-              <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Total IOUs</span>
+              <div className="text-3xl font-extrabold text-white">{totalCount}</div>
+              <div className="text-xs text-slate-400 mt-1">{countLabel}</div>
             </div>
-            <div className="text-3xl font-extrabold text-white">{totalCount}</div>
-            <div className="text-xs text-slate-400 mt-1">{countLabel}</div>
           </div>
-        </div>
 
-        {/* Pending IOUs */}
-        <div onClick={() => nav('/ious?status=PENDING')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-white/15">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                </svg>
+          {/* Pending IOUs */}
+          <div onClick={() => nav(buildIouListUrl({ status: ['PENDING', 'PENDING_HOD_ASSIGNMENT'].includes(statusFilter) ? statusFilter : 'PENDING_GROUP' }))} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-white/15">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">Pending</span>
               </div>
-              <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">Pending</span>
+              <div className="text-3xl font-extrabold text-white">{filtersApplied ? kpis.pendingCount : (analytics?.pendingTotal ?? kpis.pendingCount)}</div>
+              <div className="text-xs text-amber-100 mt-1">Awaiting approval</div>
             </div>
-            <div className="text-3xl font-extrabold text-white">{analytics?.pendingTotal ?? kpis.pendingCount}</div>
-            <div className="text-xs text-amber-100 mt-1">Awaiting approval</div>
+            <div className="absolute bottom-3 right-4 z-10">
+              <Sparkline data={kpis.sparkData} stroke="#fff" width={80} height={24} />
+            </div>
           </div>
-          <div className="absolute bottom-3 right-4 z-10">
-            <Sparkline data={kpis.sparkData} stroke="#fff" width={80} height={24} />
-          </div>
-        </div>
 
-        {/* Approved this month */}
-        <div onClick={() => nav('/ious?status=APPROVED_FOR_DISBURSEMENT')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 p-5 shadow-lg hover:shadow-xl transition-shadow group">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="p-2 rounded-lg bg-white/15">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-                </svg>
+          {/* Approved this month */}
+          <div onClick={() => nav(approvedGroupTargetUrl)} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-sky-500 to-blue-700 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
+            <div className="relative z-10 pr-16">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 rounded-lg bg-white/15">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-sky-100 uppercase tracking-wider">
+                  {filtersApplied ? 'Approved' : 'This Month'}
+                </span>
               </div>
-              <span className="text-xs font-medium text-sky-100 uppercase tracking-wider">
-                {filtersApplied ? 'Approved' : 'This Month'}
-              </span>
-            </div>
-            <div className="text-3xl font-extrabold text-white">{kpis.approvedThisMonth}</div>
-            <div className="text-xs text-sky-100 mt-1">{filtersApplied ? 'In filtered period' : 'Approvals completed'}</div>
-          </div>
-          <div className="absolute bottom-3 right-4 z-10">
-            <Donut value={kpis.approvedThisMonth} total={Math.max(1, ious.length || 1)} color="#fff" />
-          </div>
-        </div>
-
-        {/* Multi-Currency Approved Amount */}
-        <div onClick={() => nav('/ious')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
-          <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-2 rounded-lg bg-white/15">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
-                </svg>
-              </div>
-              <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">Amount Spent</span>
-            </div>
-            <div className="space-y-1 max-h-[72px] overflow-y-auto pr-1">
-              {currencyEntries.length === 0 ? (
-                <div className="text-sm text-emerald-100/80 italic py-1">No approved amounts</div>
-              ) : (
-                currencyEntries.map(([cur, amt]) => (
-                  <div key={cur} className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-emerald-200 bg-white/10 px-1.5 py-0.5 rounded">{cur}</span>
-                    <span className="text-sm font-bold text-white">{formatCurrency(amt, cur)}</span>
-                  </div>
-                ))
+              <div className="text-3xl font-extrabold text-white">{kpis.approvedThisMonth}</div>
+              <div className="text-xs text-sky-100 mt-1">{filtersApplied ? 'In filtered period' : 'Approvals completed'}</div>
+              {!filtersApplied && totalCount > 0 && (totalCount - kpis.approvedThisMonth) > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[11px] text-sky-100/95">
+                  {kpis.approvedOtherMonths > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        nav(buildIouListUrl({ status: 'APPROVED_GROUP', start_date: '', end_date: prevMonthEndYmd, date_field: 'activity' }));
+                      }}
+                      className="bg-white/15 hover:bg-white/25 px-2 py-0.5 rounded-full font-medium transition"
+                      title="Click to view approved IOUs from earlier months"
+                    >
+                      Other months: {kpis.approvedOtherMonths}
+                    </button>
+                  )}
+                  {(totalCount - kpis.approvedThisMonth - kpis.approvedOtherMonths) > 0 && (
+                    <span className="bg-white/10 px-2 py-0.5 rounded-full">
+                      Unapproved/Rejected: {totalCount - kpis.approvedThisMonth - kpis.approvedOtherMonths}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
-            <div className="text-xs text-emerald-200 mt-1">{approvedLabel}</div>
+            <div className="absolute bottom-3 right-4 z-10">
+              <Donut value={kpis.approvedThisMonth} total={Math.max(1, filteredIousLocal.length || 1)} color="#fff" />
+            </div>
+          </div>
+
+          {/* Multi-Currency Approved Amount */}
+          <div onClick={() => nav(approvedGroupTargetUrl)} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 rounded-lg bg-white/15">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />
+                  </svg>
+                </div>
+                <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">Amount Spent</span>
+              </div>
+              <div className="space-y-1 max-h-[72px] overflow-y-auto pr-1">
+                {currencyEntries.length === 0 ? (
+                  <div className="text-sm text-emerald-100/80 italic py-1">No approved amounts</div>
+                ) : (
+                  currencyEntries.map(([cur, amt]) => (
+                    <div key={cur} className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-emerald-200 bg-white/10 px-1.5 py-0.5 rounded">{cur}</span>
+                      <span className="text-sm font-bold text-white">{formatCurrency(amt, cur)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="text-xs text-emerald-200 mt-1">{approvedLabel}</div>
+            </div>
           </div>
         </div>
+
+        {/* Pictorial IOU Total Breakdown */}
+        {(() => {
+          const remainingUnapproved = totalCount - kpis.approvedThisMonth - kpis.approvedOtherMonths;
+          const iouPeriodSummary = !filtersApplied && totalCount > 0
+            ? `This month: ${kpis.approvedThisMonth}${kpis.approvedOtherMonths > 0 ? ` + Other months: ${kpis.approvedOtherMonths}` : ''}${remainingUnapproved > 0 ? ` + Pending/Draft/Rejected: ${remainingUnapproved}` : ''}`
+            : null;
+          const iouSegments = [
+            {
+              key: 'redeemed',
+              label: 'Redeemed',
+              count: kpis.redeemedCount,
+              status: 'REDEEMED',
+              barColor: 'bg-emerald-500',
+              pillClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+            },
+            {
+              key: 'in_progress',
+              label: 'Disbursed / Reconciling',
+              count: kpis.inProgressCount,
+              status: 'IN_PROGRESS_GROUP',
+              barColor: 'bg-blue-500',
+              pillClass: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+            },
+            {
+              key: 'ready',
+              label: 'Ready to Disburse',
+              count: kpis.readyToDisburseCount,
+              status: 'APPROVED_READY_GROUP',
+              barColor: 'bg-sky-500',
+              pillClass: 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100'
+            },
+            {
+              key: 'pending',
+              label: 'Pending Approval',
+              count: kpis.pendingCount,
+              status: 'PENDING_GROUP',
+              barColor: 'bg-amber-500',
+              pillClass: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+            },
+            {
+              key: 'draft_returned',
+              label: 'Draft / Returned',
+              count: kpis.draftReturnedCount,
+              status: 'DRAFT_RETURNED_GROUP',
+              barColor: 'bg-slate-400',
+              pillClass: 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+            },
+            {
+              key: 'rejected',
+              label: 'Rejected / Cancelled',
+              count: kpis.rejectedCount,
+              status: 'REJECTED_GROUP',
+              barColor: 'bg-rose-500',
+              pillClass: 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+            },
+            {
+              key: 'other',
+              label: 'Other',
+              count: kpis.otherCount,
+              status: '',
+              barColor: 'bg-zinc-400',
+              pillClass: 'bg-zinc-100 text-zinc-700 border-zinc-300 hover:bg-zinc-200'
+            }
+          ];
+          return (
+            <TallyBreakdownBar
+              title="IOU Requests Tally"
+              subtitle="Status breakdown of total IOUs (click any to view)"
+              total={totalCount}
+              summaryBadge={iouPeriodSummary}
+              segments={iouSegments}
+              onSegmentClick={(seg) => nav(buildIouListUrl({ status: seg.status }))}
+              onTotalClick={() => nav(buildIouListUrl())}
+            />
+          );
+        })()}
       </section>
 
       {/* === Direct Expense KPI Cards === */}
       {analytics && (analytics.deStatusDistribution || analytics.dePendingTotal != null) && (
-        <section>
-          <div className="flex items-center gap-2 mb-3">
+        <section className="space-y-4">
+          <div className="flex items-center gap-2">
             <div className="w-1 h-5 rounded-full bg-gradient-to-b from-teal-500 to-cyan-600" />
             <h2 className="text-lg font-bold text-slate-800">Direct Expenses</h2>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* Total DE */}
-            <div onClick={() => nav('/direct-expenses')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav(buildDeListUrl())} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-3">
@@ -647,15 +889,13 @@ export default function Dashboard() {
                   </div>
                   <span className="text-xs font-medium text-teal-100 uppercase tracking-wider">Total Direct Expenses</span>
                 </div>
-                <div className="text-3xl font-extrabold text-white">
-                  {analytics.deStatusDistribution ? analytics.deStatusDistribution.reduce((sum, s) => sum + (s.count || 0), 0) : 0}
-                </div>
+                <div className="text-3xl font-extrabold text-white">{deKpis.deTotal}</div>
                 <div className="text-xs text-teal-100 mt-1">All direct expense requests</div>
               </div>
             </div>
 
             {/* DE Pending */}
-            <div onClick={() => nav('/direct-expenses?status=PENDING')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav(buildDeListUrl({ status: 'PENDING_GROUP' }))} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-3">
@@ -666,15 +906,15 @@ export default function Dashboard() {
                   </div>
                   <span className="text-xs font-medium text-amber-100 uppercase tracking-wider">DE Pending</span>
                 </div>
-                <div className="text-3xl font-extrabold text-white">{analytics.dePendingTotal ?? 0}</div>
+                <div className="text-3xl font-extrabold text-white">{analytics.dePendingTotal ?? deKpis.dePending}</div>
                 <div className="text-xs text-amber-100 mt-1">Awaiting approval</div>
               </div>
             </div>
 
             {/* DE Completed */}
-            <div onClick={() => nav('/direct-expenses?status=COMPLETED')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-green-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav(buildDeListUrl({ status: 'COMPLETED' }))} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-600 to-green-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
-              <div className="relative z-10">
+              <div className="relative z-10 pr-16">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="p-2 rounded-lg bg-white/15">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -683,15 +923,21 @@ export default function Dashboard() {
                   </div>
                   <span className="text-xs font-medium text-emerald-100 uppercase tracking-wider">DE Completed</span>
                 </div>
-                <div className="text-3xl font-extrabold text-white">
-                  {analytics.deStatusDistribution ? (analytics.deStatusDistribution.find(s => s.status === 'COMPLETED')?.count || 0) : 0}
-                </div>
+                <div className="text-3xl font-extrabold text-white">{deKpis.deCompleted}</div>
                 <div className="text-xs text-emerald-100 mt-1">Fully disbursed & confirmed</div>
+                {deKpis.deTotal - deKpis.deCompleted > 0 && (
+                  <div className="text-[11px] text-emerald-100/90 mt-1.5">
+                    Remaining {deKpis.deTotal - deKpis.deCompleted} in other statuses below
+                  </div>
+                )}
+              </div>
+              <div className="absolute bottom-3 right-4 z-10">
+                <Donut value={deKpis.deCompleted} total={Math.max(1, deKpis.deTotal || 1)} color="#fff" />
               </div>
             </div>
 
             {/* DE Amount Spent per Currency */}
-            <div onClick={() => nav('/direct-expenses')} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
+            <div onClick={() => nav(buildDeListUrl({ status: 'APPROVED_GROUP', start_date: currentMonthStartYmd, end_date: currentMonthEndYmd }))} className="cursor-pointer relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-600 to-teal-800 p-5 shadow-lg hover:shadow-xl transition-shadow group">
               <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/10 rounded-full group-hover:scale-110 transition-transform" />
               <div className="relative z-10">
                 <div className="flex items-center gap-2 mb-2">
@@ -740,6 +986,87 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+
+          {/* Pictorial Direct Expense Total Breakdown */}
+          {(() => {
+            const deSegments = [
+              {
+                key: 'completed',
+                label: 'Completed',
+                count: deKpis.deCompleted,
+                status: 'COMPLETED',
+                barColor: 'bg-emerald-500',
+                pillClass: 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+              },
+              {
+                key: 'funds_confirmed',
+                label: 'Funds Confirmed',
+                count: deKpis.deFundsConfirmed,
+                status: 'DISBURSEMENT_CONFIRMED',
+                barColor: 'bg-cyan-500',
+                pillClass: 'bg-cyan-50 text-cyan-800 border-cyan-200 hover:bg-cyan-100'
+              },
+              {
+                key: 'disbursed',
+                label: 'Disbursed (Awaiting Receipt)',
+                count: deKpis.deDisbursed,
+                status: 'DISBURSED',
+                barColor: 'bg-blue-500',
+                pillClass: 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+              },
+              {
+                key: 'ready',
+                label: 'Ready to Disburse',
+                count: deKpis.deReady,
+                status: 'APPROVED_FOR_DISBURSEMENT',
+                barColor: 'bg-sky-500',
+                pillClass: 'bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100'
+              },
+              {
+                key: 'pending',
+                label: 'Pending Approval',
+                count: deKpis.dePending,
+                status: 'PENDING_GROUP',
+                barColor: 'bg-amber-500',
+                pillClass: 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+              },
+              {
+                key: 'draft_returned',
+                label: 'Draft / Returned',
+                count: deKpis.deDraftReturned,
+                status: 'DRAFT_RETURNED_GROUP',
+                barColor: 'bg-slate-400',
+                pillClass: 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+              },
+              {
+                key: 'rejected',
+                label: 'Rejected / Cancelled',
+                count: deKpis.deRejected,
+                status: 'REJECTED_GROUP',
+                barColor: 'bg-rose-500',
+                pillClass: 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+              },
+              {
+                key: 'other',
+                label: 'Other',
+                count: deKpis.deOther,
+                status: '',
+                barColor: 'bg-zinc-400',
+                pillClass: 'bg-zinc-100 text-zinc-700 border-zinc-300 hover:bg-zinc-200'
+              }
+            ];
+            return (
+              <TallyBreakdownBar
+                title="Direct Expenses Tally"
+                subtitle="Exact breakdown of all direct expenses (click any to view)"
+                total={deKpis.deTotal}
+                summaryBadge={deKpis.deTotal > 0 ? `${deKpis.deCompleted} Completed${deKpis.deTotal - deKpis.deCompleted > 0 ? ` + ${deKpis.deTotal - deKpis.deCompleted} Other` : ''}` : null}
+                segments={deSegments}
+                onSegmentClick={(seg) => nav(buildDeListUrl({ status: seg.status }))}
+                onTotalClick={() => nav(buildDeListUrl())}
+              />
+            );
+          })()}
         </section>
       )}
 
@@ -965,9 +1292,9 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {analytics.iousByMonth.map((iouMonth, idx) => {
-                        const deMonth = analytics.deByMonth[idx] || {};
-                        const iouCount = iouMonth.count || 0;
-                        const deCount = deMonth.count || 0;
+                        const deMonth = analytics.deByMonth?.find(m => m.month === iouMonth.month) || analytics.deByMonth[idx] || {};
+                        const iouCount = iouMonth.total ?? iouMonth.count ?? ((iouMonth.pending || 0) + (iouMonth.approved || 0) + (iouMonth.rejected || 0));
+                        const deCount = deMonth.total ?? deMonth.count ?? ((deMonth.pending || 0) + (deMonth.approved || 0) + (deMonth.rejected || 0));
                         return (
                           <tr key={iouMonth.month || idx} className="border-t border-white/5 hover:bg-white/5 transition-colors">
                             <td className="py-2 text-slate-300 font-medium">{iouMonth.month || deMonth.month || '-'}</td>

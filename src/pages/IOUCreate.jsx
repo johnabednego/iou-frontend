@@ -6,6 +6,13 @@ import Button from '../components/ui/Button';
 import FileUploader from '../components/ui/FileUploader';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
+import {
+  formatCurrency,
+  roundCurrencyAmount,
+  getCurrencyDecimals,
+  getCurrencyStep,
+  getCurrencyPlaceholder
+} from '../utils/currency';
 
 export default function IOUCreate({ defaultTab: propDefaultTab }) {
   const [searchParams] = useSearchParams();
@@ -125,11 +132,19 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
         size: a.size
       }));
 
+      const activeCurrency = currency || 'GHS';
+      const roundedAmount = roundCurrencyAmount(Number(amount), activeCurrency);
+      if (roundedAmount <= 0) {
+        setErrors({ amount: `Amount must be greater than 0 after rounding for ${activeCurrency}.` });
+        setSubmitting(false);
+        return;
+      }
+
       if (requestType === 'direct-expense') {
         const res = await createDirectExpense({
           purpose,
-          amount: Number(amount),
-          currency: currency || 'GHS',
+          amount: roundedAmount,
+          currency: activeCurrency,
           attachments: payloadAttachments
         });
         setSuccess('Direct Expense request created successfully! Redirecting...');
@@ -137,8 +152,8 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
       } else {
         const res = await createIOU({
           purpose,
-          estimated_amount: Number(amount),
-          currency: currency || 'GHS',
+          estimated_amount: roundedAmount,
+          currency: activeCurrency,
           attachments: payloadAttachments
         });
         setSuccess('IOU request created successfully! Redirecting...');
@@ -283,14 +298,23 @@ export default function IOUCreate({ defaultTab: propDefaultTab }) {
                 label={`Amount (${currency}) *`}
                 type="number"
                 min="0"
-                step="0.01"
-                placeholder="0.00"
+                step={getCurrencyStep(currency)}
+                placeholder={getCurrencyPlaceholder(currency)}
                 value={amount}
                 onChange={(e) => {
                   setAmount(e.target.value);
                   setErrors((s) => ({ ...s, amount: undefined }));
                 }}
               />
+              {amount && !isNaN(Number(amount)) && Number(amount) > 0 && (
+                <p className="text-xs text-slate-500 mt-1">
+                  {getCurrencyDecimals(currency) === 0
+                    ? `USD is rounded to nearest whole number: ${formatCurrency(amount, currency)}`
+                    : getCurrencyDecimals(currency) === 1
+                    ? `GHS is rounded to 1 decimal place: ${formatCurrency(amount, currency)}`
+                    : `Formatted amount: ${formatCurrency(amount, currency)}`}
+                </p>
+              )}
               {errors.amount && (
                 <p className="text-red-500 text-xs mt-1">{errors.amount}</p>
               )}

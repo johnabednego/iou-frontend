@@ -1,12 +1,14 @@
 // src/components/charts/SpendingPieChart.jsx
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { roundCurrencyAmount } from '../../utils/currency';
 
 const COLORS = ['#f87171', '#34d399', '#818cf8'];
 
 function formatAmount(n) {
-  if (n == null || n === 0) return '0.00';
-  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (n == null || n === 0) return '0.0';
+  const rounded = roundCurrencyAmount(n, 'GHS');
+  return Number(rounded).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {

@@ -1,20 +1,22 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { listIOUs, listDirectExpenses, exportIOUs, getDateLimit, getCurrencies } from '../services/iouService';
+import {
+  listIOUs,
+  listDirectExpenses,
+  exportIOUs,
+  getDateLimit,
+  getCurrencies,
+  cancelIOUIfsVoucher,
+  cancelDEIfsVoucher
+} from '../services/iouService';
 import Card from '../components/ui/Card';
+import IfsVoucherDisplay from '../components/ui/IfsVoucherDisplay';
+import CancelIfsVoucherModal from '../components/ui/CancelIfsVoucherModal';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
+import { toast as toastify } from 'react-toastify';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-
-function formatCurrency(n, currency = 'GHS') {
-  if (n == null) return `${currency} 0.00`;
-  const localeMap = { GHS: 'en-GH', USD: 'en-US', EUR: 'de-DE', GBP: 'en-GB' };
-  try {
-    return new Intl.NumberFormat(localeMap[currency] || 'en-US', { style: 'currency', currency }).format(n);
-  } catch {
-    return `${currency} ${Number(n).toFixed(2)}`;
-  }
-}
+import { formatCurrency } from '../utils/currency';
 
 function shortDate(dt) {
   if (!dt) return '-';
@@ -32,13 +34,17 @@ export default function RedeemedRequests() {
   const [spendingFilter, setSpendingFilter] = useState('');
   const [currencyFilter, setCurrencyFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState(''); // '' = all, 'iou', 'de'
+  const [voucherStatusFilter, setVoucherStatusFilter] = useState(''); // '' = all, 'has_cancelled', 'active_only'
   const [currencies, setCurrencies] = useState([]);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState('');
   const [minDateLimit, setMinDateLimit] = useState(null);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancellingIfs, setCancellingIfs] = useState(false);
   const todayDate = new Date();
   todayDate.setHours(23, 59, 59, 999);
 
+  const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
   // Check export permission: cashier, admin, or approver
   const canExport = user?.is_admin || user?.role === 'cashier' || user?.is_approver === true;
 
@@ -67,7 +73,7 @@ export default function RedeemedRequests() {
       fetchSettledRequests();
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, startDate, endDate, spendingFilter, currencyFilter]);
+  }, [search, startDate, endDate, spendingFilter, currencyFilter, voucherStatusFilter]);
 
   async function fetchSettledRequests() {
     setLoading(true);
@@ -82,6 +88,7 @@ export default function RedeemedRequests() {
       if (endDate) iouParams.end_date = endDate;
       if (spendingFilter) iouParams.spending = spendingFilter;
       if (currencyFilter) iouParams.currency = currencyFilter;
+      if (voucherStatusFilter) iouParams.voucher_status = voucherStatusFilter;
 
       const deParams = {
         status: 'COMPLETED',
@@ -92,6 +99,7 @@ export default function RedeemedRequests() {
       if (startDate) deParams.start_date = startDate;
       if (endDate) deParams.end_date = endDate;
       if (currencyFilter) deParams.currency = currencyFilter;
+      if (voucherStatusFilter) deParams.voucher_status = voucherStatusFilter;
 
       const [iouRes, deRes] = await Promise.all([
         listIOUs(iouParams).catch(err => { console.error('Failed to fetch IOUs', err); return { data: { data: [] } }; }),
@@ -186,12 +194,30 @@ export default function RedeemedRequests() {
     }
   }
 
+  async function handleCancelIfsConfirm({ new_ifs_voucher_number, reason }) {
+    if (!cancelTarget) return;
+    setCancellingIfs(true);
+    try {
+      const isDe = cancelTarget.itemType === 'DIRECT_EXPENSE';
+      const fn = isDe ? cancelDEIfsVoucher : cancelIOUIfsVoucher;
+      const res = await fn(cancelTarget.id, { new_ifs_voucher_number, reason });
+      toastify.success(res.data?.message || 'IFS Voucher cancelled and replaced.');
+      setCancelTarget(null);
+      await fetchSettledRequests();
+    } catch (err) {
+      toastify.error(err?.response?.data?.message || 'Failed to cancel IFS Voucher Number');
+    } finally {
+      setCancellingIfs(false);
+    }
+  }
+
   // Date picker helpers
   const startDateObj = startDate ? new Date(startDate) : null;
   const endDateObj = endDate ? new Date(endDate) : null;
 
   const totalCount = allItems.length;
-  const withVoucherCount = allItems.filter(i => i.ifs_voucher_number).length;
+  const withVoucherCount = allItems.filter(i => i.ifs_voucher_number || (Array.isArray(i.cancelled_ifs_vouchers) && i.cancelled_ifs_vouchers.length > 0)).length;
+  const cancelledVoucherCount = allItems.reduce((sum, i) => sum + (Array.isArray(i.cancelled_ifs_vouchers) ? i.cancelled_ifs_vouchers.length : 0), 0);
   const iouCount = allItems.filter(i => i.itemType === 'IOU').length;
   const deCount = allItems.filter(i => i.itemType === 'DIRECT_EXPENSE').length;
 
@@ -315,7 +341,9 @@ export default function RedeemedRequests() {
             </div>
             <div className="text-3xl font-extrabold">{withVoucherCount}</div>
           </div>
-          <div className="text-xs text-emerald-100 mt-2">Directly linked to IFS ERP voucher</div>
+          <div className="text-xs text-emerald-100 mt-2">
+            Directly linked to IFS ERP voucher{cancelledVoucherCount > 0 ? ` (${cancelledVoucherCount} cancelled)` : ''}
+          </div>
         </div>
 
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-700 p-5 shadow-lg text-white flex flex-col justify-between">
@@ -435,9 +463,18 @@ export default function RedeemedRequests() {
             </select>
           </div>
 
-          {(search || startDate || endDate || spendingFilter || currencyFilter || typeFilter) && (
+          <div>
+            <label className="text-xs font-semibold text-slate-600 mb-1 block">IFS Voucher</label>
+            <select value={voucherStatusFilter} onChange={e => setVoucherStatusFilter(e.target.value)} className="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+              <option value="">All Vouchers</option>
+              <option value="has_cancelled">Has Cancelled Voucher</option>
+              <option value="active_only">Active Only (No Cancelled)</option>
+            </select>
+          </div>
+
+          {(search || startDate || endDate || spendingFilter || currencyFilter || typeFilter || voucherStatusFilter) && (
             <button
-              onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); setCurrencyFilter(''); setTypeFilter(''); }}
+              onClick={() => { setSearch(''); setStartDate(''); setEndDate(''); setSpendingFilter(''); setCurrencyFilter(''); setTypeFilter(''); setVoucherStatusFilter(''); }}
               className="px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"
             >
               Reset
@@ -523,19 +560,14 @@ export default function RedeemedRequests() {
                       <div className="text-xs text-slate-500 line-clamp-1 max-w-[220px]">{item.purpose}</div>
                     </td>
                     <td className="py-3 px-3">
-                      {item.ifs_voucher_number ? (
-                        <a
-                          href="https://ifsprod.apmterminals.com/client/runtime/Ifs.Fnd.Explorer.application"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline inline-flex items-center gap-1 font-semibold"
-                          title="Open in IFS Explorer"
-                        >
-                          {item.ifs_voucher_number}
-                          <svg className="w-3.5 h-3.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </a>
+                      {item.ifs_voucher_number || (Array.isArray(item.cancelled_ifs_vouchers) && item.cancelled_ifs_vouchers.length > 0) ? (
+                        <IfsVoucherDisplay
+                          activeVoucher={item.ifs_voucher_number}
+                          cancelledVouchers={item.cancelled_ifs_vouchers}
+                          canCancel={isCashierOrAdmin && Boolean(item.ifs_voucher_number)}
+                          onCancelClick={() => setCancelTarget(item)}
+                          compact
+                        />
                       ) : (
                         <span className="text-slate-400 font-mono text-xs">N/A</span>
                       )}
@@ -576,6 +608,15 @@ export default function RedeemedRequests() {
           </div>
         )}
       </Card>
+
+      <CancelIfsVoucherModal
+        isOpen={Boolean(cancelTarget)}
+        currentVoucher={cancelTarget?.ifs_voucher_number}
+        requestNumber={cancelTarget?.request_number}
+        onClose={() => setCancelTarget(null)}
+        onConfirm={handleCancelIfsConfirm}
+        loading={cancellingIfs}
+      />
     </div>
   );
 }
