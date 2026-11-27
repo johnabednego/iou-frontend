@@ -7,6 +7,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { formatCurrency } from '../utils/currency';
 import { matchesDeStatus } from '../utils/statusFilters';
+import { canViewAllCompany, isHodUser } from '../utils/roles';
 
 const STATUS_OPTIONS = [
   '', 'PENDING_GROUP', 'AWAITING_ACTION_GROUP', 'IN_PROGRESS_GROUP', 'DRAFT_RETURNED_GROUP', 'REJECTED_GROUP', 'APPROVED_GROUP',
@@ -59,10 +60,21 @@ export default function DirectExpenseList() {
   const { user } = useContext(AuthContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
-  const isApprover = user?.is_approver === true;
-  const isHod = user?.role === 'hod';
-  const canViewAll = isCashierOrAdmin || isApprover || isHod;
-  const [viewAll, setViewAll] = useState(searchParams.get('view') === 'mine' ? false : canViewAll);
+  const canSeeCompanyWide = canViewAllCompany(user);
+  const isHod = !canSeeCompanyWide && isHodUser(user);
+  const hasViewTabs = canSeeCompanyWide || isHod;
+  const defaultViewMode = canSeeCompanyWide ? 'all' : isHod ? 'department' : 'mine';
+
+  function resolveViewMode(viewParam) {
+    if (!hasViewTabs) return 'mine';
+    if (viewParam === 'mine') return 'mine';
+    if (viewParam === 'approvals') return 'approvals';
+    if (viewParam === 'department') return isHod ? 'department' : 'all';
+    if (viewParam === 'all') return canSeeCompanyWide ? 'all' : 'department';
+    return defaultViewMode;
+  }
+
+  const [viewMode, setViewMode] = useState(() => resolveViewMode(searchParams.get('view')));
 
   const [items, setItems] = useState([]);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -93,10 +105,8 @@ export default function DirectExpenseList() {
     setDateField(searchParams.get('date_field') || '');
     setCurrencyFilter(searchParams.get('currency') || '');
     setDeptFilter(searchParams.get('department') || '');
-    const viewParam = searchParams.get('view');
-    if (viewParam === 'mine') setViewAll(false);
-    else if (canViewAll) setViewAll(true);
-  }, [searchParams, canViewAll]);
+    setViewMode(resolveViewMode(searchParams.get('view')));
+  }, [searchParams, canSeeCompanyWide, isHod]);
 
   useEffect(() => {
     getCurrencies({ include_inactive: 'true' }).then(res => setCurrencies(res.data?.data || [])).catch(() => { });
@@ -109,7 +119,7 @@ export default function DirectExpenseList() {
     const delay = search ? 250 : 0;
     const timer = setTimeout(() => { fetchItems(lockedDashboardStatus); }, delay);
     return () => clearTimeout(timer);
-  }, [search, startDate, endDate, dateField, viewAll, currencyFilter, deptFilter, canViewAll, lockedDashboardStatus]);
+  }, [search, startDate, endDate, dateField, viewMode, currencyFilter, deptFilter, canSeeCompanyWide, isHod, lockedDashboardStatus]);
 
   async function fetchItems(serverStatus = '') {
     if (!hasLoadedOnceRef.current) setInitialLoading(true);
@@ -123,7 +133,13 @@ export default function DirectExpenseList() {
       if (dateField) params.date_field = dateField;
       if (currencyFilter) params.currency = currencyFilter;
       if (deptFilter) params.department = deptFilter;
-      if (canViewAll && viewAll) params.all = true;
+      if (hasViewTabs) {
+        params.scope = viewMode;
+        if (viewMode === 'all') params.all = true;
+      } else {
+        const urlView = searchParams.get('view');
+        if (urlView === 'mine' || urlView === 'approvals') params.scope = urlView;
+      }
       const res = await listDirectExpenses(params);
       setItems(res.data.data || []);
       hasLoadedOnceRef.current = true;
@@ -234,23 +250,39 @@ export default function DirectExpenseList() {
   const hasActiveFilters = Boolean(search || statusFilter || startDate || endDate || dateField || currencyFilter || deptFilter);
   const hideZeroCards = fromDashboard;
 
-  const pageTitle = useMemo(() => {
-    if (canViewAll && viewAll) {
-      if (isCashierOrAdmin) return 'Direct Expense Registry';
-      if (isHod) return 'Department Direct Expenses';
-      return 'Company Direct Expenses';
+  const viewTabs = useMemo(() => {
+    if (canSeeCompanyWide) {
+      return [
+        { key: 'all', label: 'All Requests' },
+        { key: 'approvals', label: 'My Approvals' },
+        { key: 'mine', label: 'My Submissions' }
+      ];
     }
-    return 'My Direct Expenses';
-  }, [canViewAll, viewAll, isCashierOrAdmin, isHod]);
+    if (isHod) {
+      return [
+        { key: 'department', label: 'Department Requests' },
+        { key: 'approvals', label: 'My Approvals' },
+        { key: 'mine', label: 'My Submissions' }
+      ];
+    }
+    return [];
+  }, [canSeeCompanyWide, isHod]);
+
+  const pageTitle = useMemo(() => {
+    if (viewMode === 'approvals') return 'Direct Expenses for My Approval';
+    if (viewMode === 'mine' || !hasViewTabs) return hasViewTabs ? 'My Direct Expense Submissions' : 'My Direct Expenses';
+    if (viewMode === 'department') return 'Department Direct Expenses';
+    if (isCashierOrAdmin) return 'Direct Expense Registry';
+    return 'All Direct Expenses';
+  }, [viewMode, hasViewTabs, isCashierOrAdmin]);
 
   const pageSubtitle = useMemo(() => {
-    if (canViewAll && viewAll) {
-      if (isCashierOrAdmin) return 'Manage and disburse direct expense reimbursements across all departments';
-      if (isHod) return 'Tracking direct expenses submitted across your assigned department(s)';
-      return 'Viewing all direct expenses submitted across the company';
-    }
-    return 'Track your personal direct expense reimbursement requests';
-  }, [canViewAll, viewAll, isCashierOrAdmin, isHod]);
+    if (viewMode === 'approvals') return 'Requests where you are assigned as an approver or recorded an approval decision';
+    if (viewMode === 'mine' || !hasViewTabs) return 'Direct expense reimbursement requests you personally submitted';
+    if (viewMode === 'department') return 'Direct expenses submitted across the department(s) you head';
+    if (isCashierOrAdmin) return 'Manage and disburse direct expense reimbursements across all departments';
+    return 'Viewing all direct expenses submitted across the company';
+  }, [viewMode, hasViewTabs, isCashierOrAdmin]);
 
   return (
     <div className="space-y-6">
@@ -259,22 +291,18 @@ export default function DirectExpenseList() {
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-2xl font-bold text-slate-800">{pageTitle}</h1>
-            {canViewAll && (
-              <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setViewAll(true)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${viewAll ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                >
-                  {isHod ? 'Department Requests' : 'All Requests'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewAll(false)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${!viewAll ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                >
-                  My Submissions
-                </button>
+            {viewTabs.length > 0 && (
+              <div className="flex flex-wrap bg-slate-100 p-1 rounded-xl border border-slate-200 gap-0.5">
+                {viewTabs.map(tab => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setViewMode(tab.key)}
+                    className={`px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${viewMode === tab.key ? 'bg-white text-teal-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -502,7 +530,7 @@ export default function DirectExpenseList() {
                 setDateField('');
                 setCurrencyFilter('');
                 setDeptFilter('');
-                if (canViewAll) setViewAll(true);
+                setViewMode(defaultViewMode);
                 setSearchParams({}, { replace: true });
               }}
               className="px-3 py-2 text-sm font-medium text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all"

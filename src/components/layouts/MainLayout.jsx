@@ -4,6 +4,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import NotificationsDropdown from '../NotificationsDropdown';
 import { AuthContext } from '../../contexts/AuthContext';
 import { getMyApprovals } from '../../services/iouService';
+import { canViewAllCompany, canAccessApprovals, isHodUser } from '../../utils/roles';
 import mpsLogo from '../../assets/mps.svg';
 
 const NavItem = ({ to, label, show = true, isActive, onClick, badge }) => {
@@ -55,9 +56,9 @@ export default function MainLayout() {
   const closeSidebar = () => setSidebarOpen(false);
 
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
-  const isApprover = user?.is_approver === true;
-  const canSeeApprovals = isCashierOrAdmin || isApprover || user?.role === 'hod';
-  const canSeeRedeemed = isCashierOrAdmin || isApprover;
+  const canSeeCompanyWide = canViewAllCompany(user);
+  const canSeeApprovals = canAccessApprovals(user);
+  const canSeeRedeemed = canSeeCompanyWide;
 
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
 
@@ -115,8 +116,8 @@ export default function MainLayout() {
       <nav className="space-y-2" aria-label="Main navigation">
         <NavItem to="/" label="Dashboard" isActive={isActivePath('/')} onClick={closeSidebar} />
         <NavItem to="/ious/create" label="New Request" isActive={isActivePath('/ious/create')} onClick={closeSidebar} />
-        <NavItem to="/ious" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
-        <NavItem to="/direct-expenses" label={isCashierOrAdmin || isApprover || user?.role === 'hod' ? 'Direct Expenses' : 'My Direct Expenses'} isActive={isActivePath('/direct-expenses')} onClick={closeSidebar} />
+        <NavItem to="/ious" label={canSeeCompanyWide || isHodUser(user) ? 'IOU Requests' : 'My Requests'} isActive={isActivePath('/ious')} onClick={closeSidebar} />
+        <NavItem to="/direct-expenses" label={canSeeCompanyWide || isHodUser(user) ? 'Direct Expenses' : 'My Direct Expenses'} isActive={isActivePath('/direct-expenses')} onClick={closeSidebar} />
         <NavItem to="/approvals" label="Approvals" show={canSeeApprovals} badge={pendingApprovalsCount} isActive={isActivePath('/approvals')} onClick={closeSidebar} />
         <NavItem to="/redeemed" label="IFS Vouchers" show={canSeeRedeemed} isActive={isActivePath('/redeemed')} onClick={closeSidebar} />
         <NavItem to="/fund-management" label="Fund Management" show={user?.is_admin || user?.role === 'cashier'} isActive={isActivePath('/fund-management')} onClick={closeSidebar} />

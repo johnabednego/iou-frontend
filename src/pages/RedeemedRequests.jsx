@@ -13,6 +13,7 @@ import IfsVoucherDisplay from '../components/ui/IfsVoucherDisplay';
 import CancelIfsVoucherModal from '../components/ui/CancelIfsVoucherModal';
 import { Link } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
+import { canViewAllCompany } from '../utils/roles';
 import { toast as toastify } from 'react-toastify';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -45,8 +46,8 @@ export default function RedeemedRequests() {
   todayDate.setHours(23, 59, 59, 999);
 
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
-  // Check export permission: cashier, admin, or approver
-  const canExport = user?.is_admin || user?.role === 'cashier' || user?.is_approver === true;
+  // Check export permission: cashier, admin, authorizer, or approver
+  const canExport = canViewAllCompany(user);
 
   // Fetch admin date limit on mount
   useEffect(() => {
@@ -80,6 +81,7 @@ export default function RedeemedRequests() {
     try {
       const iouParams = {
         status: 'REDEEMED',
+        scope: 'all',
         all: true,
         limit: 500
       };
@@ -92,6 +94,7 @@ export default function RedeemedRequests() {
 
       const deParams = {
         status: 'COMPLETED',
+        scope: 'all',
         all: true,
         limit: 500
       };

@@ -15,6 +15,7 @@ import StatusDistributionChart from '../components/charts/StatusDistributionChar
 import ApprovedAmountsChart from '../components/charts/ApprovedAmountsChart';
 import DepartmentIOUChart from '../components/charts/DepartmentIOUChart';
 import { formatCurrency } from '../utils/currency';
+import { canViewAllCompany, canAccessApprovals, isAuthorizerUser, isHodUser } from '../utils/roles';
 
 /* Sparkline */
 function Sparkline({ data = [], width = 120, height = 28, stroke = '#065f46' }) {
@@ -143,10 +144,10 @@ export default function Dashboard() {
 
   // Determine user role capabilities
   const isCashierOrAdmin = user?.is_admin || user?.role === 'cashier';
-  const isApprover = user?.is_approver === true;
-  const isHod = user?.role === 'hod';
-  const canSeeAll = isCashierOrAdmin || isApprover;
-  const canExport = isCashierOrAdmin || isApprover || isHod;
+  const isApprover = isAuthorizerUser(user);
+  const isHod = isHodUser(user);
+  const canSeeAll = canViewAllCompany(user);
+  const canExport = canAccessApprovals(user);
   const canSeeAnalytics = canSeeAll || isHod;
 
   // Set viewModeAll default for cashiers/admins/approvers
@@ -256,7 +257,10 @@ export default function Dashboard() {
           department: departmentFilter || undefined
         };
 
-        if (canSeeAll && viewModeAll) params.all = true;
+        if (canSeeAll) {
+          params.scope = viewModeAll ? 'all' : 'mine';
+          if (viewModeAll) params.all = true;
+        }
         if (showApprovedByMe) params.approved_by = user?.id;
 
         const [rIous, rApps, rNotes] = await Promise.all([
@@ -478,6 +482,7 @@ export default function Dashboard() {
       if (currencyFilter) params.currency = currencyFilter;
       if (departmentFilter) params.department = departmentFilter;
       if (canSeeAll && viewModeAll) params.all = true;
+      if (canSeeAll) params.scope = viewModeAll ? 'all' : 'mine';
       if (showApprovedByMe) params.approved_by = user?.id;
 
       const res = await exportIOUs(params);
@@ -625,6 +630,7 @@ export default function Dashboard() {
     if (dept) qs.set('department', dept);
     if (sd) qs.set('start_date', sd);
     if (ed) qs.set('end_date', ed);
+    if (canSeeAll && !viewModeAll) qs.set('view', 'mine');
     return `/direct-expenses?${qs.toString()}`;
   }
 
@@ -1461,11 +1467,13 @@ export default function Dashboard() {
               <Link to="/direct-expenses/create" className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-700 text-white hover:text-white hover:text-opacity-50 text-sm font-semibold shadow-sm hover:shadow-md transition-all">
                 + New Direct Expense
               </Link>
-              <Link to="/approvals" className="px-5 py-2.5 rounded-xl bg-white border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition-all">
-                My Approvals
-              </Link>
+              {canAccessApprovals(user) && (
+                <Link to="/approvals" className="px-5 py-2.5 rounded-xl bg-white border border-amber-200 text-amber-700 text-sm font-semibold hover:bg-amber-50 transition-all">
+                  My Approvals
+                </Link>
+              )}
               <Link to="/ious" className="px-5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-all">
-                All Requests
+                {canSeeAll ? 'All Requests' : isHod ? 'Department Requests' : 'My Requests'}
               </Link>
             </div>
           </div>
